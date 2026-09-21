@@ -1,0 +1,17 @@
+.build/
+.swiftpm/
+build/
+.DS_Store
+# Local diagnostics and signing credentials are not source distribution material.
+diagnostics/
+*.p12
+*.keychain-db
+*.pem
+
+
+# Local release archives and secret exports
+releases/
+*.p8
+*.pfx
+.env
+.env.*
