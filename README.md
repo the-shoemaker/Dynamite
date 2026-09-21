@@ -1,7 +1,5 @@
 # Dynamite
 
-Beautiful status updates, right in your notch.
-
 ![Dynamite: compact volume feedback in the MacBook notch](docs/images/showcase-hero.png)
 
 Dynamite turns volume, brightness, Focus changes and other everyday status updates into compact, animated feedback. It stays focused on that job. No calendar dashboard, widgets or extra workspace to manage.
