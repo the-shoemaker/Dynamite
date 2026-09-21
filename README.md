@@ -2,6 +2,8 @@
 
 Beautiful status updates, right in your notch.
 
+![Dynamite brightness preview in a MacBook-style display](docs/images/notch-preview.png)
+
 Dynamite turns volume, brightness, Focus changes and other everyday status updates into compact, animated feedback. It stays focused on that job. No calendar dashboard, widgets or extra workspace to manage.
 
 Built with SwiftUI and AppKit, with a floating pill for displays without a notch.

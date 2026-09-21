@@ -1,0 +1,19 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Dynamite</title>
+        <item>
+            <title>0.1.0</title>
+            <pubDate>Mon, 21 Sep 2026 13:14:43 +0200</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.0-beta.1/Dynamite-2.zip" length="2708476" type="application/octet-stream" sparkle:edSignature="iarLTGg6ojtzoLKBbWQU3yQwmYQ4OxBjYjDM4O4ZLvbffsOcG03lzH0ZtFB56mMznLJOEuqnXqo+O4jYRu29BA=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: hR5KAGgVnPhX2GGSprxhQap3ruHMPf5dBE1iX0mCiZgQ2ZNeW3dRJvjL+nqaQLffpZIJaH4r0P07c8FA5zjCAQ==
+length: 1128
+-->
