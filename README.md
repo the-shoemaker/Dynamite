@@ -2,7 +2,7 @@
 
 Beautiful status updates, right in your notch.
 
-![Dynamite brightness preview in a MacBook-style display](docs/images/notch-preview.png)
+![Dynamite: compact volume feedback in the MacBook notch](docs/images/showcase-hero.png)
 
 Dynamite turns volume, brightness, Focus changes and other everyday status updates into compact, animated feedback. It stays focused on that job. No calendar dashboard, widgets or extra workspace to manage.
 
@@ -23,6 +23,10 @@ Built with SwiftUI and AppKit, with a floating pill for displays without a notch
 - Adjustable durations from half a second to an hour, display previews, optional login startup and independent activity switches.
 
 Dynamite hides recognized native popups when its replacement is available. Some integrations depend on private macOS interfaces, so replacement is not guaranteed on every system. AirDrop requests and transfer progress still use Apple's UI.
+
+![Microphone mute, Focus, AirPods battery and Low Power Mode in external-display pills](docs/images/showcase-status.png)
+
+![Expanded Clock timer and completed AirDrop controls, rendered with sample data](docs/images/showcase-actions.png)
 
 ## Install
 
@@ -80,6 +84,8 @@ Use macOS with Xcode or compatible Command Line Tools installed.
 ```
 
 The app is written to `build/Dynamite.app`. Local builds without release configuration do not contact an update feed. `scripts/setup-signing.sh` can create a stable local development identity so rebuilding is less disruptive to Accessibility permissions. Never publish its private keychain or password.
+
+The showcase images use the actual SwiftUI views with inert sample providers. Regenerate them with `./scripts/render-showcase.sh`; this does not start integrations or change the installed app.
 
 See [release instructions](docs/releases.md), [architecture](docs/architecture.md) and [platform support](docs/platform-support.md) for details.
 
