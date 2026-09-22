@@ -74,7 +74,7 @@ Version 0.1.1 fixes a microphone observer loop that could cause high CPU use aft
 
 Release builds use Sparkle with an HTTPS feed and Ed25519-signed update archives. Check for Updates is in About; automatic checks are optional. The public verification key is included in the app, while the signing key stays in the maintainer's Keychain. Apple code signing and Sparkle update signing are separate.
 
-The first beta establishes this update path. A complete upgrade on a second Mac still needs testing. Manual downloads remain available in Releases.
+The 0.1.0 → 0.1.1 download, verification, installation and relaunch were tested through Check for Updates on the development Mac using a copy of the published beta. A complete upgrade on a second Mac still needs testing. Manual downloads remain available in Releases.
 
 ## Build and test
 
