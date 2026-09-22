@@ -62,9 +62,13 @@ Permissions belong to each Mac and user. They do not travel with the download. S
 
 For a useful bug report, include your macOS version, Mac model, display setup, the affected activity and reproduction steps. Avoid posting device addresses, private filenames or unredacted notification screenshots.
 
+Activities are grouped into collapsible sections. Macs without an internal battery hide battery activities and their previews; AirPods battery feedback remains available.
+
 ## Resource use
 
 Dynamite is designed for low idle overhead. It uses native windows and event-driven observers where possible, with no web runtime. Animations and active integrations still consume CPU. Earlier local measurements are documented in [performance notes](docs/performance-2026-09-20.md); they are not a battery-life guarantee or a measurement of every Mac and workload.
+
+Version 0.1.1 fixes a microphone observer loop that could cause high CPU use after extended runtime. See the [incident and verification notes](docs/microphone-idle-cpu-2026-09-22.md). Accelerated listener tests pass; full-day operation still needs verification.
 
 ## Updates
 

@@ -42,6 +42,7 @@ final class AppModel: ObservableObject {
     private var acceptsShadeUpdates = false
     private var displayIDs: [UInt32] = []
     private var previousPlacement: DisplayPlacement?
+    @Published private(set) var hasInternalBattery = BatteryMonitor.hasInternalBattery() ?? true
     @Published private(set) var batteryPercent: Int?
 
     func start() {

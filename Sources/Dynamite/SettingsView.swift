@@ -18,6 +18,9 @@ struct SettingsView: View {
     var onSetup: () -> Void = {}
     @ViewState<Feature> private var previewFeature = .volume
     @ViewState<Feature?> private var expanded: Feature?
+    @ViewState<Set<String>> private var collapsedGroups = []
+    private var activityGroups: [ActivitySettingsGroup] { ActivitySettingsGroup.available(hasInternalBattery: model.hasInternalBattery) }
+    private var availableFeatures: [Feature] { activityGroups.flatMap(\.features) }
     @ViewState<Bool> private var previewNotch = true
     @AppStorage("preview.blackBackground") private var previewBlackBackground = false
     @ViewState<Bool> private var accessibilityAllowed = AXIsProcessTrusted()
@@ -91,16 +94,34 @@ struct SettingsView: View {
                     }
                     .padding(12).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
                 }
-                VStack(spacing: 0) {
-                    ForEach(Array(Feature.allCases.enumerated()), id: \.element) { index, feature in
-                        activityRow(feature)
-                        if index < Feature.allCases.count - 1 { Divider().padding(.leading, 45) }
+                ForEach(activityGroups) { group in
+                    VStack(spacing: 0) {
+                        Button {
+                            withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
+                                if collapsedGroups.contains(group.id) { collapsedGroups.remove(group.id) }
+                                else { collapsedGroups.insert(group.id) }
+                            }
+                        } label: {
+                            HStack {
+                                Text(group.title).font(.callout.weight(.semibold))
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                                    .rotationEffect(.degrees(collapsedGroups.contains(group.id) ? 0 : 90))
+                            }.foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 9).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityLabel("\(group.title) group")
+                            .accessibilityValue(collapsedGroups.contains(group.id) ? "Collapsed" : "Expanded")
+                        if !collapsedGroups.contains(group.id) {
+                            ForEach(Array(group.features.enumerated()), id: \.element) { index, feature in
+                                activityRow(feature)
+                                if index < group.features.count - 1 { Divider().padding(.leading, 45) }
+                            }
+                        }
                     }
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator.opacity(0.45)))
                 }
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator.opacity(0.45)))
                 HStack {
-                    Text(mediaKeys.active ? "Keyboard replacement is active." : "Battery reminders work without Accessibility.")
+                    Text(mediaKeys.active ? "Keyboard replacement is active." : "Allow Accessibility for keyboard replacement.")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button(settings.preferences.paused ? "Resume" : "Pause") { settings.preferences.paused.toggle() }
@@ -122,7 +143,7 @@ struct SettingsView: View {
                                 notched: previewNotch, blackBackground: previewBlackBackground)
             HStack {
                 Picker("Activity", selection: $previewFeature) {
-                    ForEach(Feature.allCases) { Text($0.title).tag($0) }
+                    ForEach(availableFeatures) { Text($0.title).tag($0) }
                 }.labelsHidden().frame(width: 150)
                 PreviewBackgroundSelector(dark: $previewBlackBackground)
                     .frame(width: 156, height: 24)

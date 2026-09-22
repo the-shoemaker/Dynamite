@@ -3,6 +3,15 @@ import IOKit.ps
 import IslandCore
 
 final class BatteryMonitor {
+    // UPS units and accessory batteries must not identify a desktop as a laptop.
+    static func hasInternalBattery() -> Bool? {
+        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef] else { return nil }
+        return sources.contains { item in
+            guard let description = IOPSGetPowerSourceDescription(info, item)?.takeUnretainedValue() as? [String: Any] else { return false }
+            return description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType
+        }
+    }
     var onChange: ((BatterySnapshot) -> Void)?
     private var source: CFRunLoopSource?
     private var powerStateObservation: NSObjectProtocol?

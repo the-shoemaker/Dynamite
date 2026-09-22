@@ -24,6 +24,6 @@ The first 60-second post-restart sample averaged 0.532% CPU, with 0–0.017% int
 
 An accelerated listener stress run passed 1,000 device-route changes, 100,000 route notifications and ten restarts. The fake Core Audio provider retained exactly six active listeners throughout, including only one system-route listener. This checks listener ownership under churn, not every real hardware driver's behavior or overnight operation.
 
-The raw process sample and counter logs stay in the ignored local diagnostics directory. They are not source-release material. This document describes a local fix; the original published beta archive has not been replaced.
+The raw process sample and counter logs stay in the ignored local diagnostics directory. They are not source-release material. The fix is included in 0.1.1 build 3. The original 0.1.0 archive remains unchanged.
 
 The related output-volume observer has a similar route-listener lifecycle pattern. It was not the hot thread in this incident and is unchanged in this targeted fix.
