@@ -14,3 +14,5 @@ swift test "${extra_flags[@]}" --disable-xctest --disable-sandbox --cache-path .
 python3 scripts/test-update-config.py
 
 ./scripts/verify-airdrop-lifecycle.sh
+
+./scripts/verify-microphone-lifecycle.sh
