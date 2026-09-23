@@ -62,7 +62,7 @@ struct SettingsView: View {
                 case .activities: activities
                 case .general: general
                 case .integrations: integrations
-                case .about: AboutView(updater: model.updater)
+                case .about: AboutView(updater: model.updater, diagnostic: model.diagnostic)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

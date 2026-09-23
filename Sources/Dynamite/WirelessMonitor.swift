@@ -52,7 +52,7 @@ final class WirelessMonitor: NSObject, ObservableObject, CWEventDelegate {
         guard running else { return }
         running = false
         generation = UUID()
-        debounce?.cancel()
+        debounce?.cancel(); debounce = nil
         refreshPending = false
         transitions.reset()
         status = "Off"
@@ -92,8 +92,13 @@ final class WirelessMonitor: NSObject, ObservableObject, CWEventDelegate {
     private func connectionChanged() {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.running else { return }
-            self.debounce?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.refresh() }
+            guard self.debounce == nil else { return }
+            let token = self.generation
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.running, self.generation == token else { return }
+                self.debounce = nil
+                self.refresh()
+            }
             self.debounce = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
         }

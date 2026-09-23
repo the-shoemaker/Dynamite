@@ -16,7 +16,7 @@ final class BatteryMonitor {
     private var source: CFRunLoopSource?
     private var powerStateObservation: NSObjectProtocol?
     func start() {
-        guard source == nil else { return }
+        guard source == nil, powerStateObservation == nil else { return }
         let callback: IOPowerSourceCallbackType = { context in
             guard let context else { return }
             Unmanaged<BatteryMonitor>.fromOpaque(context).takeUnretainedValue().read()

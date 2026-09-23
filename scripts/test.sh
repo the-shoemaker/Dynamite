@@ -16,3 +16,7 @@ python3 scripts/test-update-config.py
 ./scripts/verify-airdrop-lifecycle.sh
 
 ./scripts/verify-microphone-lifecycle.sh
+
+./scripts/verify-output-lifecycle.sh
+
+./scripts/verify-diagnostic.sh

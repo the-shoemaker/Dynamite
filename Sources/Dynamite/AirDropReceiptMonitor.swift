@@ -15,6 +15,7 @@ final class AirDropReceiptMonitor {
     private var startedAt: TimeInterval = 0
     private var seen = Set<String>()
     private var pending: [String: URL] = [:]
+    private var retrying = Set<URL>()
     private var publishWork: DispatchWorkItem?
 
     func start() {
@@ -53,7 +54,7 @@ final class AirDropReceiptMonitor {
         if let stream { FSEventStreamStop(stream); FSEventStreamInvalidate(stream); FSEventStreamRelease(stream) }
         stream = nil
         publishWork?.cancel(); publishWork = nil
-        pending.removeAll(); seen.removeAll()
+        pending.removeAll(); seen.removeAll(); retrying.removeAll()
     }
     private func report(_ value: String) {
         let callback = onStatus
@@ -63,6 +64,7 @@ final class AirDropReceiptMonitor {
         guard stream != nil, generation == token else { return }
         let url = input.standardizedFileURL
         guard url.deletingLastPathComponent() == directory, !url.lastPathComponent.hasPrefix(".") else { return }
+        guard attempt != 0 || !retrying.contains(url) else { return }
         var buffer = [UInt8](repeating: 0, count: 1024)
         let count = getxattr(url.path, "com.apple.quarantine", &buffer, buffer.count, 0, XATTR_NOFOLLOW)
         if count > 0, let receipt = AirDropReceipt(quarantine: String(decoding: buffer.prefix(count), as: UTF8.self),
@@ -70,9 +72,10 @@ final class AirDropReceiptMonitor {
             let key = receipt.identifier + ":" + url.path
             guard seen.insert(key).inserted else { return }
             pending[key] = url
-            publishWork?.cancel()
+            guard publishWork == nil else { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self, self.stream != nil, self.generation == token else { return }
+                self.publishWork = nil
                 let urls = Array(self.pending.values).sorted { $0.lastPathComponent < $1.lastPathComponent }
                 self.pending.removeAll()
                 let callback = self.onReceipt
@@ -81,7 +84,12 @@ final class AirDropReceiptMonitor {
             publishWork = work
             queue.asyncAfter(deadline: .now() + 0.45, execute: work)
         } else if attempt < 3 {
-            queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.inspect(url, attempt: attempt + 1, token: token) }
+            retrying.insert(url)
+            queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, self.generation == token else { return }
+                self.retrying.remove(url)
+                self.inspect(url, attempt: attempt + 1, token: token)
+            }
         }
     }
 }

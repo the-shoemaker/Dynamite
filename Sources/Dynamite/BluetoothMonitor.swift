@@ -21,6 +21,9 @@ final class BluetoothMonitor: NSObject, ObservableObject {
     var airPodsEnabled = false
     private var notification: IOBluetoothUserNotification?
     private var disconnects: [String: IOBluetoothUserNotification] = [:]
+    private var outputReadPending = false // Main thread.
+    private var outputGeneration: UUID? // reads queue.
+    private var lastOutputDevice: AudioDeviceID? // reads queue.
     private var outputListener: AudioObjectPropertyListenerBlock?
     private var lastAnnouncement: (String, TimeInterval)?
     private var running = false
@@ -31,8 +34,9 @@ final class BluetoothMonitor: NSObject, ObservableObject {
         guard !running else { return }
         running = true
         generation = UUID()
-        startOutputListener()
         let token = generation
+        reads.async { [weak self] in self?.lastOutputDevice = nil; self?.outputGeneration = token }
+        startOutputListener()
         reads.async { [weak self] in
             let initial = (IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? [])
                 .filter { $0.isConnected() }
@@ -46,7 +50,7 @@ final class BluetoothMonitor: NSObject, ObservableObject {
                         selector: #selector(self.disconnected(_:device:)))
                 }
                 self.notification = IOBluetoothDevice.register(forConnectNotifications: self, selector: #selector(self.connected(_:device:)))
-                if self.notification == nil { self.running = false; self.status = "Bluetooth monitoring unavailable" }
+                if self.notification == nil { self.stop(); self.status = "Bluetooth monitoring unavailable" }
                 else { self.status = "Watching paired devices" }
                 self.refreshDevices()
             }
@@ -59,6 +63,8 @@ final class BluetoothMonitor: NSObject, ObservableObject {
             AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &property, reads, outputListener)
         }
         outputListener = nil
+        outputReadPending = false
+        reads.async { [weak self] in self?.outputGeneration = nil; self?.lastOutputDevice = nil }
         lastAnnouncement = nil
         generation = UUID()
         notification?.unregister()
@@ -157,7 +163,20 @@ final class BluetoothMonitor: NSObject, ObservableObject {
     }
     private func startOutputListener() {
         guard outputListener == nil else { return }
-        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in self?.outputChanged() }
+        let token = generation
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.running, self.generation == token, !self.outputReadPending else { return }
+                self.outputReadPending = true
+                self.reads.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.outputChanged(token: token)
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.generation == token else { return }
+                        self.outputReadPending = false
+                    }
+                }
+            }
+        }
         var property = Self.outputProperty
         if AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &property, reads, listener) == noErr {
             outputListener = listener
@@ -165,11 +184,15 @@ final class BluetoothMonitor: NSObject, ObservableObject {
     }
     // Smart Routing can activate an already-connected AirPods link. CoreAudio's
     // event covers that case without polling or changing the selected output.
-    private func outputChanged() {
+    private func outputChanged(token: UUID) {
+        guard outputGeneration == token else { return }
         var deviceID = AudioDeviceID(0)
         var size = UInt32(MemoryLayout<AudioDeviceID>.size)
         var property = Self.outputProperty
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &property, 0, nil, &size, &deviceID) == noErr else { return }
+        guard lastOutputDevice != deviceID else { return }
+        lastOutputDevice = deviceID
+        guard deviceID != 0 else { return }
         var uid: Unmanaged<CFString>?
         size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         property = .init(mSelector: kAudioDevicePropertyDeviceUID, mScope: kAudioObjectPropertyScopeGlobal,
@@ -184,10 +207,10 @@ final class BluetoothMonitor: NSObject, ObservableObject {
         let name = device.name ?? "AirPods"
         let isAirPods = AirPodsBattery.symbol(for: device) != nil
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.running, self.airPodsEnabled else { return }
+            guard let self, self.running, self.generation == token, self.airPodsEnabled else { return }
             if isAirPods { self.onAirPodsReady?() }
             self.readBattery(device, identifier: identifier, label: "AirPods", fallbackSymbol: "headphones",
-                token: self.generation, attempt: 0, deviceName: name)
+                token: token, attempt: 0, deviceName: name)
         }
     }
     private func announceAirPods(identifier: String, name: String, reading: AirPodsBattery.Reading, percent: Int) {

@@ -9,6 +9,7 @@ final class AppModel: ObservableObject {
     let island = IslandCoordinator()
     let loginItem = LoginItemController()
     let updater = NativeUpdater()
+    let diagnostic = PerformanceDiagnostic()
     let wireless = WirelessMonitor()
     let bluetooth = BluetoothMonitor()
     let microphone = MicrophoneMonitor()
@@ -173,7 +174,7 @@ final class AppModel: ObservableObject {
                 self?.focus.stop()
                 self?.airDrop.stop()
                 self?.airDropActivity = nil
-                self?.hardwareQueue.async { [weak self] in self?.brightness.cancelRamps() }
+                self?.hardwareQueue.async { [weak self] in self?.brightness.cancelRamps(); self?.audio.stopMonitoring() }
             })
         observations.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification,
             object: nil, queue: .main) { [weak self] _ in
@@ -212,10 +213,10 @@ final class AppModel: ObservableObject {
         if !sleeping && !preferences.paused && preferences.preference(for: .focus).enabled { focus.start() }
         else { focus.stop() }
         acceptsShadeUpdates = !sleeping && !preferences.paused && preferences.preference(for: .brightness).enabled
-        if !preferences.paused && (preferences.preference(for: .hotspot).enabled || preferences.preference(for: .wifi).enabled) { wireless.start() }
+        if !sleeping && !preferences.paused && (preferences.preference(for: .hotspot).enabled || preferences.preference(for: .wifi).enabled) { wireless.start() }
         else { wireless.stop() }
         bluetooth.airPodsEnabled = preferences.preference(for: .airPods).enabled
-        if !preferences.paused && (preferences.preference(for: .bluetooth).enabled || bluetooth.airPodsEnabled) { bluetooth.start() }
+        if !sleeping && !preferences.paused && (preferences.preference(for: .bluetooth).enabled || bluetooth.airPodsEnabled) { bluetooth.start() }
         else { bluetooth.stop() }
         if preferences.paused || !preferences.preference(for: .brightness).enabled {
             shades.clear()
@@ -335,6 +336,7 @@ final class AppModel: ObservableObject {
                     placement: settings.preferences.placement, previewNotch: notch)
     }
     func stop() {
+        diagnostic.shutdown()
         finishHandoffWork?.cancel(); finishHandoffWork = nil
         finishHandoffDeadline = nil; finishHandoff = TimerFinishHandoff(); hadClockAlert = false
         pausedTimerWork?.cancel()

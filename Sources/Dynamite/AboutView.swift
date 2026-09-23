@@ -3,6 +3,7 @@ import MacAppUpdates
 
 struct AboutView: View {
     @ObservedObject var updater: NativeUpdater
+    @ObservedObject var diagnostic: PerformanceDiagnostic
     private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development" }
     private var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—" }
     var body: some View {
@@ -25,6 +26,16 @@ struct AboutView: View {
                     .disabled(!updater.isConfigured)
                 if let checked = updater.lastChecked {
                     LabeledContent("Last checked") { Text(checked, format: .dateTime.day().month().hour().minute()) }
+                }
+            }
+            Section("Performance diagnostic") {
+                Text(diagnostic.status)
+                Text("Records CPU and memory once a minute for 12 hours. Sustained high usage captures up to three short stack samples. Files stay on this Mac; nothing is uploaded. Stack samples may include executable and library paths. Keeps the latest three tests.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    if diagnostic.active { Button("Stop test") { diagnostic.stop() } }
+                    else { Button("Start 12-hour test") { diagnostic.start() } }
+                    Button("Show diagnostic files") { diagnostic.showFiles() }.disabled(diagnostic.folder == nil)
                 }
             }
             Section("Acknowledgements") {

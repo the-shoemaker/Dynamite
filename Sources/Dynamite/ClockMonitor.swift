@@ -137,6 +137,10 @@ final class ClockMonitor: ObservableObject {
             }
         }
         if let records = store.records {
+            // Retain only current timers and the just-finished timer needed by
+            // this publish. Old timer IDs must not accumulate for the app lifetime.
+            let liveIDs = Set(records.map(\.identifier)).union(last.map { [$0.identifier] } ?? [])
+            originalDurations = originalDurations.filter { liveIDs.contains($0.key) }
             let now = Date()
             let eligible = records.filter { $0.deadline.map { $0.timeIntervalSince(now) > -3 } ?? true }
             let record = eligible.first(where: { $0.identifier == last?.identifier }) ?? eligible.sorted {
