@@ -4,16 +4,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Dynamite</title>
         <item>
-            <title>0.1.1</title>
-            <pubDate>Tue, 22 Sep 2026 11:36:07 +0200</pubDate>
-            <sparkle:version>3</sparkle:version>
-            <sparkle:shortVersionString>0.1.1</sparkle:shortVersionString>
+            <title>0.1.2</title>
+            <pubDate>Wed, 23 Sep 2026 10:51:47 +0200</pubDate>
+            <sparkle:version>4</sparkle:version>
+            <sparkle:shortVersionString>0.1.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.1-beta.1/Dynamite-3.zip" length="2725233" type="application/octet-stream" sparkle:edSignature="boCGchxCPEPFPnVZ7eEs0sZUG0rN5WLT4qYnz3skUyFkC519T6UYTozmp6TYvUWN6OAm/06TfGTXXg86lIrmCw=="></enclosure>
+            <enclosure url="https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.2-beta.1/Dynamite-4.zip" length="2764695" type="application/octet-stream" sparkle:edSignature="ITZc0I6pSjdGKZN9g7ITASFA5S/zIrvRwtqviSbtXGoRW7A38uQp9ZhQ5ljHuhZL+OX3x2sS4CQ0traS2fpADg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: GLzKaIziwnjQKYc+jLg7Qc+FUxgqDbecK05P07HnOoTbrmhdeniopMUk6IwN4LqtbYZP5Hz4a48DStzl5HJpAg==
+edSignature: 6HPqGCsgkccyWHG9c/go/zsmnk4yjbCj8AjNSGOMT0WWowzaazckPjyPDNHPYghzCx4KjsO9UTIMlrLCd+NaBw==
 length: 1128
 -->
