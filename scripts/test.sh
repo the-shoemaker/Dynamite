@@ -12,8 +12,10 @@ if [[ -f "$testing_plugin" ]]; then
 fi
 swift test "${extra_flags[@]}" --disable-xctest --disable-sandbox --cache-path .build/package-cache
 python3 scripts/test-update-config.py
+./scripts/verify-icon.sh
 
 ./scripts/verify-airdrop-lifecycle.sh
+./scripts/verify-airdrop-filesystem.sh
 
 ./scripts/verify-microphone-lifecycle.sh
 

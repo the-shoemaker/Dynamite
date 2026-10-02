@@ -10,10 +10,12 @@ The public feed URL, verification key and versions live in `scripts/release-conf
 source scripts/release-config.sh
 ./scripts/test.sh
 ./scripts/build.sh
-./scripts/prepare-update.sh --unnotarized-beta build/Dynamite.app releases/0.1.0-beta.1/ https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.0-beta.1/
+./scripts/prepare-update.sh --unnotarized-beta build/Dynamite.app releases/0.1.3-beta.1/ https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.3-beta.1/
 ```
 
 The packaging script verifies the app's code signature, preserves framework symlinks with `ditto`, and signs the archive and appcast using Sparkle's `dynamite-updates` Keychain account. It does not upload anything. Without `--unnotarized-beta`, it also requires Gatekeeper acceptance.
+
+When changing the icon, run `scripts/render-icon.sh` and commit the generated `Resources/Dynamite.icns`. This renders explicit pixels, creates all ten standard/Retina PNGs and compiles them with Apple's `iconutil`. Do not construct ICNS chunks by hand. `scripts/verify-icon.sh` decodes every representation and checks the pill, background, indicator and transparent corners; the full test suite runs it too. These tools may need to run outside a restricted sandbox on macOS.
 
 Create the matching GitHub prerelease and upload the archive plus a SHA-256 checksum file. Verify the public download before copying the generated `appcast.xml` to the repository root. Add `<sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>` to the item for Apple Silicon-only releases and re-sign the feed after any edit. The raw `main` branch appcast is the stable feed URL. Do not rename or replace an archive after signing it.
 

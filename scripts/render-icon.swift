@@ -1,8 +1,12 @@
 import AppKit
 
 let output = CommandLine.arguments[1]
-let image = NSImage(size: NSSize(width: 1024, height: 1024))
-image.lockFocus()
+// Explicit pixels keep rendering independent of the attached display's scale.
+let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1024, pixelsHigh: 1024,
+    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+NSGraphicsContext.saveGraphicsState()
+NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)!
 let rect = NSRect(x: 40, y: 40, width: 944, height: 944)
 let path = NSBezierPath(roundedRect: rect, xRadius: 218, yRadius: 218)
 NSGradient(starting: NSColor(calibratedRed: 0.99, green: 0.79, blue: 0.59, alpha: 1),
@@ -15,6 +19,5 @@ pill.lineWidth = 3
 pill.stroke()
 NSColor(calibratedRed: 0.98, green: 0.73, blue: 0.5, alpha: 1).setFill()
 NSBezierPath(ovalIn: NSRect(x: 668, y: 470, width: 84, height: 84)).fill()
-image.unlockFocus()
-let bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!
+NSGraphicsContext.restoreGraphicsState()
 try bitmap.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: output))

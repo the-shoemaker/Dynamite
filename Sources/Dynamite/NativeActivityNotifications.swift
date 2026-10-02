@@ -61,6 +61,7 @@ final class NativeActivityNotifications: ObservableObject {
         }
         queue.async { [weak self] in
             guard let self else { return }
+            if !features.contains(.airDrop) { self.clearReceipts() }
             if self.enabled != features { self.restoreParked(); self.enabled = features }
             if features.isEmpty { self.detach(); self.publish([], status: "Off"); return }
             if let pid, self.app == nil { self.attach(pid) }
@@ -70,7 +71,7 @@ final class NativeActivityNotifications: ObservableObject {
     func receivedFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         queue.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.enabled.contains(.airDrop) else { return }
             self.receipts = Set(urls.flatMap { AirDropReceipt.notificationNames(for: $0.lastPathComponent) })
             self.receiptsUntil = ProcessInfo.processInfo.systemUptime + 15
             let token = UUID()
@@ -84,6 +85,11 @@ final class NativeActivityNotifications: ObservableObject {
                 }
             }
         }
+    }
+    private func clearReceipts() {
+        receipts.removeAll()
+        receiptsUntil = 0
+        receiptGeneration = UUID()
     }
     func airPodsConnected() { airPodsBanner.connected() }
     func focusChanged() { focusBanner.connected() }
@@ -134,7 +140,7 @@ final class NativeActivityNotifications: ObservableObject {
         if let workspaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver) }
         workspaceObserver = nil
         // Termination must restore native windows before the process exits.
-        queue.sync { enabled.removeAll(); detach() }
+        queue.sync { enabled.removeAll(); clearReceipts(); detach() }
         clockActions = []; status = "Off"
     }
     /// Final-second state only changes event priority; it adds no polling.

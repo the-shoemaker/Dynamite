@@ -70,6 +70,8 @@ Dynamite is designed for low idle overhead. It uses native windows and event-dri
 
 Version 0.1.1 fixed a microphone observer loop. Version 0.1.2 fixes a separate output-volume callback loop, coalesces repeated device notifications, and cleans up stale observer work. See the [observer audit](docs/observer-audit-2026-09-22.md). Automated lifecycle and stress tests cover notification bursts and repeated device changes. Longer real-world operation and other Macs still need testing.
 
+Version 0.1.3 prevents completed AirDrop cards from returning after received files are renamed, copied, or updated. Late files in the same receipt update an open card without reopening a dismissed card. It also rebuilds the app icon with all standard and Retina sizes. See the [AirDrop and icon audit](docs/airdrop-icon-audit-2026-10-02.md).
+
 About includes an optional [12-hour performance diagnostic](docs/performance-diagnostic.md). It records local CPU and memory counters and captures a bounded stack sample if sustained load occurs. Nothing is uploaded automatically.
 
 ## Updates
