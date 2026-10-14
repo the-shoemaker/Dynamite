@@ -292,3 +292,14 @@ The compact notch now retracts only horizontally and fades its moving rim from 1
 ### Sidebar resize correction
 
 The previous 760-point minimum allowed the Activities controls to exceed available width, and disabling hosting-view size propagation made clipping possible. The root now has a consistent 820-point minimum width and 400-point minimum content height; the maximum content width is 1640 points. Native sidebar thickness is fixed at 200 points. The sidebar item's canCollapseFromWindowResize is disabled without disabling its toolbar collapse action. Hosting-view minimum sizing is retained. The build and signature verification passed; the native toolbar button was exercised. Interactive minimum-size feel is awaiting the user's resize check on their display arrangement.
+
+
+## October 14 release, 0.1.4 build 7
+
+- All 98 core tests, six update-configuration tests and lifecycle checks pass. Network stress and measured limits are recorded in performance-2026-10-14.md.
+- The signed app passes actual-window checks for primary replacement/restoration, stable lower timer panels, interrupted promotion, Caps Lock return, expanded-card motion and input decoding.
+- Setup was inspected in the running app. Its 500-point-wide window fits the content; the smaller icon and title align, and the former bottom spacer is gone. Internet settings no longer include the explanatory notices. Feature hints are short and below the controls. Standalone footer buttons align to their card edges.
+- The public build 7 archive and checksum were downloaded from GitHub and match the signed local archive. The extracted app passes deep strict code-signature verification; Sparkle verifies the archive and signed feed. No private local paths were found in the packaged app.
+- A separate locally signed development copy of build 5 used a temporary signed feed. Cancelling the offered update left it intact. A second Check for Updates downloaded and installed 0.1.4 build 7 and relaunched it. The installed executable matches the release executable, and its feed URL returns to the public main feed.
+- Activity preferences remained byte-for-byte identical across that update. Accessibility, Full Disk Access and Downloads access still displayed Allowed. The user's existing login choice was retained. The regular workspace app was reopened afterward; the temporary old copy is no longer the working app.
+- This verifies the updater on the development Mac, not a fresh account or another Mac. The copy of build 5 contained in-progress development changes; this was not an untouched public 0.1.3 binary. The locally signed beta remains unnotarized.
