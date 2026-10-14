@@ -2,15 +2,19 @@
 set -euo pipefail
 cd "${0:A:h:h}"
 export CLANG_MODULE_CACHE_PATH="${PWD}/.build/clang-cache"
-export SWIFTPM_MODULECACHE_OVERRIDE="${PWD}/.build/swift-cache"
-swift build --build-system native -c release --disable-sandbox --cache-path .build/package-cache
+export SWIFTPM_MODULECACHE_OVERRIDE="$CLANG_MODULE_CACHE_PATH"
+# Share SDK modules with tests and the standalone verification scripts.
+build_flags=(--build-system native -c release --disable-sandbox
+    --cache-path .build/package-cache --disable-dependency-cache --disable-index-store
+    -Xswiftc -module-cache-path -Xswiftc "$CLANG_MODULE_CACHE_PATH")
+swift build "${build_flags[@]}"
 app="${PWD}/build/Dynamite.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-bin_dir="$(swift build --build-system native -c release --show-bin-path --disable-sandbox --cache-path .build/package-cache)"
+bin_dir="$(swift build "${build_flags[@]}" --show-bin-path)"
 cp "$bin_dir/Dynamite" "$app/Contents/MacOS/Dynamite.new"
-# Remove linked debug records containing developer-machine source paths.
+# Remove linked debug records and local symbols from the packaged executable.
 # Preserve the original SwiftPM executable for local debugging; sign afterwards.
-strip -S "$app/Contents/MacOS/Dynamite.new"
+strip -Sx "$app/Contents/MacOS/Dynamite.new"
 mv -f "$app/Contents/MacOS/Dynamite.new" "$app/Contents/MacOS/Dynamite"
 cp Resources/Dynamite.icns "$app/Contents/Resources/Dynamite.icns"
 cp Resources/Info.plist "$app/Contents/Info.plist"

@@ -15,7 +15,7 @@ public struct IslandGeometry: Equatable, Sendable {
     public var shellHeight: Double { height + (isNotched ? 1 : 0) }
     public func widths(for feature: Feature) -> (left: Double, right: Double) {
         // Equal wings keep the icon and percentage balanced around the camera.
-        [.hotspot, .wifi, .bluetooth, .clockTimer, .microphoneMute, .airDrop].contains(feature) ? (84, 84) : (68, 68)
+        [.internetOffline, .internetOnline, .hotspot, .wifi, .bluetooth, .clockTimer, .microphoneMute, .airDrop].contains(feature) ? (84, 84) : (68, 68)
     }
     public func expandedWidth(for feature: Feature) -> Double {
         let sides = widths(for: feature)
@@ -25,7 +25,7 @@ public struct IslandGeometry: Equatable, Sendable {
     /// Transparent overshoot space below the activity is intentionally excluded.
     public func containsHover(_ point: CGPoint, screen: CGRect, width: Double, height: Double) -> Bool {
         point.x >= screen.midX - width / 2 && point.x <= screen.midX + width / 2 &&
-            point.y >= screen.maxY - topGap - height && point.y <= screen.maxY
+            point.y >= screen.maxY - topGap - height && point.y <= screen.maxY - max(0, topGap - 6)
     }
     public func menuRegion(in frame: CGRect) -> CGRect? {
         guard isNotched else { return nil }

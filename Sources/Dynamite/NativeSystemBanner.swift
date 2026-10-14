@@ -14,6 +14,7 @@ final class NativeSystemBanner {
     private var generation = UUID()
     private var pending = false
     private var parked: [CFHashCode: (element: AXUIElement, point: CGPoint)] = [:]
+    private var creationReads = Set<CFHashCode>()
     private static let bundle = "com.apple.MenuBarAgent"
     private let identifier: String
     private let requiresPassiveContent: Bool
@@ -83,7 +84,7 @@ final class NativeSystemBanner {
                     // catches up, especially when changing displays.
                     owner.refreshParked(element, deadline: ProcessInfo.processInfo.systemUptime + 0.12)
                 }
-                if created && owner.watchCreation { owner.created(element) }
+                if created && owner.watchCreation { owner.beginCreationRead(element) }
                 guard ProcessInfo.processInfo.systemUptime < owner.until || !owner.parked.isEmpty else { return }
                 owner.requestRead()
             }
@@ -94,16 +95,43 @@ final class NativeSystemBanner {
         }
         CFRunLoopAddSource(NativeBannerEventLoop.shared.runLoop, AXObserverGetRunLoopSource(observer), .commonModes)
     }
-    private func created(_ window: AXUIElement) {
-        guard let identifier: String = attribute(window, kAXIdentifierAttribute), identifier == self.identifier else { return }
+    private func beginCreationRead(_ window: AXUIElement) {
+        guard creationReads.insert(CFHash(window)).inserted else { return }
+        created(window, attempt: 0)
+    }
+    private func created(_ window: AXUIElement, attempt: Int) {
+        let key = CFHash(window)
+        // macOS can announce creation before publishing the identifier or
+        // position, especially on another display. Retry that exact element
+        // briefly; never arm a broad scan for an unidentified system window.
+        guard let identifier: String = attribute(window, kAXIdentifierAttribute) else {
+            retryCreation(window, attempt: attempt); return
+        }
+        guard identifier == self.identifier else { creationReads.remove(key); return }
         until = ProcessInfo.processInfo.systemUptime + 20
-        guard !requiresPassiveContent || passiveContent(window, deadline: ProcessInfo.processInfo.systemUptime + 0.12) == .passive else { return }
-        if park(window) { publish("Native popup hidden") }
+        if requiresPassiveContent {
+            switch passiveContent(window, deadline: ProcessInfo.processInfo.systemUptime + 0.12) {
+            case .actionable: creationReads.remove(key); return
+            case .unavailable: retryCreation(window, attempt: attempt); return
+            case .passive: break
+            }
+        }
+        if park(window) { creationReads.remove(key); publish("Native popup hidden") }
+        else { retryCreation(window, attempt: attempt) }
+    }
+    private func retryCreation(_ window: AXUIElement, attempt: Int) {
+        let delays = [0.012, 0.04, 0.10, 0.20]
+        guard attempt < delays.count else { creationReads.remove(CFHash(window)); return }
+        let token = generation
+        queue.asyncAfter(deadline: .now() + delays[attempt]) { [weak self] in
+            guard let self, self.enabled, self.generation == token else { return }
+            self.created(window, attempt: attempt + 1)
+        }
     }
     private func detach() {
         for key in Array(parked.keys) { restore(key) }
         if let observer { CFRunLoopRemoveSource(NativeBannerEventLoop.shared.runLoop, AXObserverGetRunLoopSource(observer), .commonModes) }
-        observer = nil; app = nil; until = 0; pending = false; generation = UUID()
+        observer = nil; app = nil; until = 0; pending = false; creationReads.removeAll(); generation = UUID()
     }
     func stop() {
         if let workspaceObserver { NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver) }

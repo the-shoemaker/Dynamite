@@ -74,13 +74,17 @@ struct SettingsView: View {
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 820, maxWidth: 1640, minHeight: 400)
         .animation(nil, value: page)
+        .onAppear { accessibilityAllowed = AXIsProcessTrusted() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            accessibilityAllowed = AXIsProcessTrusted()
+        }
     }
 
     private var activities: some View {
         ScrollView {
             VStack(spacing: 16) {
                 preview
-                if !mediaKeys.active && !settings.preferences.paused {
+                if !accessibilityAllowed && !settings.preferences.paused {
                     HStack(spacing: 12) {
                         Image(systemName: "hand.raised").font(.title3).foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 3) {
@@ -90,7 +94,7 @@ struct SettingsView: View {
                         }
                         Spacer()
                         Button("Allow…") { mediaKeys.requestAccess() }
-                        Button("Check again") { model.refreshConnections() }
+                        Button("Check again") { accessibilityAllowed = AXIsProcessTrusted(); model.refreshConnections() }
                     }
                     .padding(12).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
                 }
@@ -121,7 +125,7 @@ struct SettingsView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator.opacity(0.45)))
                 }
                 HStack {
-                    Text(mediaKeys.active ? "Keyboard replacement is active." : "Allow Accessibility for keyboard replacement.")
+                    Text(settings.preferences.paused ? "Activities are paused." : mediaKeys.active ? "Keyboard replacement is active." : "Keyboard replacement is inactive.")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button(settings.preferences.paused ? "Resume" : "Pause") { settings.preferences.paused.toggle() }
@@ -162,6 +166,7 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 Group {
                     if feature == .airDrop { AirDropGlyph().frame(width: 19, height: 19) }
+                    else if feature == .bluetooth { BluetoothGlyph().frame(width: 19, height: 19) }
                     else { Image(systemName: feature.symbol).font(.system(size: 16)) }
                 }
                     .foregroundStyle(feature == .volume || feature == .brightness || feature == .powerDisconnected ? Color.primary : feature.tint)
@@ -173,19 +178,13 @@ struct SettingsView: View {
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(feature.title).font(.callout)
-                            if feature == .lowBattery {
-                                Text("Additional reminder; macOS alerts remain.")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
+                        Text(feature.title).font(.callout)
                         Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
                             .rotationEffect(.degrees(expanded == feature ? 90 : 0)).foregroundStyle(.tertiary)
                         Spacer()
                     }.contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("\(feature.title) settings")
-                Text([.capsLock, .clockTimer, .airDrop].contains(feature) ? (settings.preferences.preference(for: feature).enabled ? "On" : "Off") : ActivityDuration.label(settings.preferences.preference(for: feature).duration, compact: true))
+                Text(feature == .internetOffline && settings.preferences.keepOfflineVisible ? (settings.preferences.preference(for: feature).enabled ? "Always" : "Off") : [.capsLock, .clockTimer, .airDrop].contains(feature) ? (settings.preferences.preference(for: feature).enabled ? "On" : "Off") : ActivityDuration.label(settings.preferences.preference(for: feature).duration, compact: true))
                     .font(.caption).monospacedDigit().foregroundStyle(.secondary).frame(width: 44)
                 Button { previewFeature = feature; model.preview(feature, notch: previewNotch) } label: {
                     Image(systemName: "play").font(.system(size: 11))
@@ -196,17 +195,12 @@ struct SettingsView: View {
             }.padding(12)
             if expanded == feature {
                 VStack(alignment: .leading, spacing: 12) {
-                    if feature == .airDrop {
-                        Text("Stays visible until dismissed.").foregroundStyle(.secondary)
-                    } else if feature == .clockTimer {
-                        Text("Shows the running timer on the internal display, or the largest external display if needed. Hover for pause or resume; click the time to open Clock. After pausing, it stays for the duration below. Hovering holds it open; moving away restarts that duration. The countdown continues with Clock’s window closed. Controls reconnect to Clock when needed.").foregroundStyle(.secondary)
-                    } else if feature == .capsLock {
-                        Text("Stays on the internal display, with the largest external display as a fallback. Turning Caps Lock on briefly interrupts a timer for the duration below, then the timer returns. Other temporary activities can still take its place.")
-                            .foregroundStyle(.secondary)
+                    if feature == .internetOffline {
+                        Toggle("Keep visible while offline", isOn: $settings.preferences.keepOfflineVisible)
                     }
                     if feature != .airDrop {
                     HStack {
-                        Text(feature == .clockTimer ? "After pause" : feature == .capsLock ? "Interrupt for" : "Duration").frame(width: 74, alignment: .leading)
+                        Text(feature == .clockTimer ? "After pause" : feature == .capsLock ? "Preview for" : "Duration").frame(width: 74, alignment: .leading)
                         Slider(value: Binding(get: { ActivityDuration.index(for: settings.preferences.preference(for: feature).duration) },
                             set: { settings.setDuration(feature, ActivityDuration.seconds(at: $0)) }), in: 0...Double(ActivityDuration.steps.count - 1), step: 1)
                             .accessibilityLabel("\(feature.title) duration")
@@ -214,48 +208,23 @@ struct SettingsView: View {
                         Text(ActivityDuration.label(settings.preferences.preference(for: feature).duration))
                             .monospacedDigit().frame(width: 76, alignment: .trailing)
                     }
+                    .disabled(feature == .internetOffline && settings.preferences.keepOfflineVisible)
                     }
                     if feature != .airDrop {
                         Button("Reset duration") { settings.setDuration(feature, feature.defaultDuration) }
                             .disabled(settings.preferences.preference(for: feature).duration == feature.defaultDuration)
                     }
-                    if feature == .lowPowerMode {
-                        Text("Orange when Low Power Mode turns on, white when it turns off, with the current battery percentage.")
-                            .foregroundStyle(.secondary)
-                    }
-                    if feature == .microphoneMute {
-                        MicrophoneStatus(monitor: model.microphone)
-                        Text("Briefly confirms changes to the Mac’s default microphone mute control or input level reaching zero. Red means muted; green means unmuted. Call-app mute buttons can have a separate state. No audio is recorded.")
-                            .foregroundStyle(.secondary)
-                    }
+                    if feature == .microphoneMute { MicrophoneStatus(monitor: model.microphone) }
                     if feature == .brightness {
                         Toggle("Smooth brightness", isOn: $settings.preferences.smoothBrightness)
                         Toggle("Show Vivid extra-range indicator", isOn: $settings.preferences.vividCompatibility)
-                        Text("A small orange + marks Vivid’s extra range. Dynamite controls normal display brightness; changing Vivid’s boost level from the brightness keys is not supported yet.")
-                            .foregroundStyle(.secondary)
                         Button("Hide Vivid’s center indicator") { _ = VividBridge.hideIndicator() }
                     }
-                    if feature == .hotspot {
-                        Text("Brief confirmation when this Mac joins a Personal Hotspot. macOS’s phone battery reading is unreliable, so no percentage is shown.")
-                            .foregroundStyle(.secondary)
-                    }
-                    if feature == .wifi {
-                        Text("Brief confirmation after Wi-Fi connects. Hotspot connections use their separate activity. Network names and passwords are not read.")
-                            .foregroundStyle(.secondary)
-                    }
-                    if feature == .airDrop {
-                        Text("Received files in Downloads appear with Open and Show in Finder. Dismiss with Escape, an outside click, or the close button.").foregroundStyle(.secondary)
-                    }
-                    if feature == .airPods {
-                        Text("Shows the lowest available earbud battery reading when AirPods connect. Unknown battery readings are omitted. Matching passive connection popups are hidden where macOS allows it.").foregroundStyle(.secondary)
+                    if [.internetOffline, .internetOnline].contains(feature) {
+                        InternetProbeAddressRow(settings: settings)
                     }
                     if feature == .focus {
-                        Text("Focus changes appear in purple. Full Disk Access is needed to read macOS Focus state.").foregroundStyle(.secondary)
-                        Button("Open Full Disk Access settings…") { openFocusAccess() }
-                    }
-                    if feature == .bluetooth {
-                        Text("Brief confirmation for paired Bluetooth devices. Pairing prompts stay with macOS.")
-                            .foregroundStyle(.secondary)
+                        Button("Open Full Disk Access settings") { openFocusAccess() }
                     }
                     if feature == .chargeTarget || feature == .lowBattery {
                         HStack {
@@ -266,14 +235,25 @@ struct SettingsView: View {
                                 .monospacedDigit().frame(width: 76, alignment: .trailing)
                         }
                     }
-                    if feature == .chargeTarget {
-                        Text("A reminder only. Charging continues past this percentage.")
-                            .foregroundStyle(.secondary)
+                    if let hint = activityHint(feature) {
+                        Text(hint).foregroundStyle(.secondary)
                     }
                 }
                 .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 44).padding(.trailing, 15).padding(.bottom, 14)
             }
+        }
+    }
+    private func activityHint(_ feature: Feature) -> String? {
+        switch feature {
+        case .clockTimer: return "Hover for controls; click the time to open Clock."
+        case .airDrop: return "Shows files received in Downloads."
+        case .airPods: return "Shows the lower earbud battery level."
+        case .microphoneMute: return "Tracks the Mac’s microphone; app mute buttons may differ."
+        case .brightness: return "Brightness keys control the normal range."
+        case .focus: return "Requires Full Disk Access."
+        default: return nil
         }
     }
     private func threshold(_ feature: Feature) -> Binding<Double> {
@@ -289,26 +269,18 @@ struct SettingsView: View {
                 Toggle("Open at login", isOn: Binding(get: { loginItem.enabled }, set: { loginItem.setEnabled($0) }))
                 if let message = loginItem.message {
                     Text(message).font(.caption).foregroundStyle(.secondary)
-                    Button("Open Login Items settings…") { loginItem.openSettings() }
+                    Button("Open Login Items settings") { loginItem.openSettings() }
                 }
                 Toggle("Show in menu bar", isOn: $settings.preferences.showMenuBarIcon)
-                Text("Open Dynamite from Finder or Spotlight to return to settings, even when the menu bar icon is hidden.")
-                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Keep settings on top", isOn: $settings.preferences.keepSettingsOnTop)
             }
             Section("Display") {
                 Picker("Show activities on", selection: $settings.preferences.placement) {
                     ForEach(DisplayPlacement.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
-                Text("On a MacBook, activities extend from the sides of the notch at its existing height. Other displays use a small pill, 6 points below the top edge.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Presentation") {
                 Toggle("Pause all activities", isOn: $settings.preferences.paused)
-                Text("Nothing is drawn when idle. Active activities can appear in a screen share; pause them before presenting if needed.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("Animations follow your Mac’s Reduce Motion setting.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped)
     }
@@ -340,25 +312,27 @@ struct SettingsView: View {
                     Button("Refresh", systemImage: "arrow.clockwise") { bluetooth.refreshDevices() }
                         .buttonStyle(.borderless).font(.caption)
                 }
-            } footer: {
-                Text("Battery readings update on connection or refresh.")
             }
-            Section("Current state") {
+            Section {
                 IntegrationStatusRow(title: "Wi-Fi", symbol: "wifi", tint: .blue, value: wireless.status.replacingOccurrences(of: "Wi-Fi ", with: "").capitalized)
+                InternetIntegrationRow(monitor: model.internet)
                 IntegrationStatusRow(title: "Focus", symbol: "moon.fill", tint: .purple,
                                      value: focus.status == "Focus off" ? "Off" : focus.status == "Focus on" ? "On" : focus.status)
                 IntegrationStatusRow(title: "Clock", symbol: "timer", tint: .orange,
                                      value: clock.reading == nil && clock.status == "Waiting for a Clock timer" ? "No active timer" : clock.status)
                 MicrophoneIntegrationRow(monitor: model.microphone)
-            }
-            Section {
-                Text("Choose activities and their durations in Activities.").foregroundStyle(.secondary)
-                Text("AirDrop supports received files in Downloads. Incoming requests and transfer progress are not available yet.")
-                    .font(.caption).foregroundStyle(.secondary)
+            } header: {
+                Text("Current state")
+            } footer: {
                 Button("Recheck permissions and connections") {
                     accessibilityAllowed = AXIsProcessTrusted()
                     model.refreshConnections()
                 }
+                .font(.body).controlSize(.regular)
+                .padding(.top, 8)
+                // Grouped-form footers sit ten points inside their card edge.
+                .padding(.leading, -10)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .formStyle(.grouped)
@@ -516,5 +490,47 @@ private final class StableSidebarMaterialView: NSVisualEffectView {
             item.canCollapseFromWindowResize = false
             item.collapseBehavior = .preferResizingSiblingsWithFixedSplitView
         }
+    }
+}
+
+private struct InternetProbeAddressRow: View {
+    @ObservedObject var settings: SettingsStore
+    @ViewState<String> private var draft = ""
+    private var normalized: String? { InternetProbeSettings.normalizedAddress(draft) }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Ping target").frame(width: 74, alignment: .leading)
+                TextField("IPv4 address", text: $draft)
+                    .textFieldStyle(.roundedBorder).frame(maxWidth: 180)
+                    .accessibilityLabel("Internet ping target IPv4 address")
+                    .onSubmit { apply() }
+                Button("Apply") { apply() }
+                    .disabled(normalized == nil || normalized == settings.preferences.internetProbeAddress)
+                Button("Reset") {
+                    draft = InternetProbeSettings.defaultAddress
+                    settings.preferences.internetProbeAddress = InternetProbeSettings.defaultAddress
+                }
+                .help("Reset to \(InternetProbeSettings.defaultAddress)")
+                .disabled(draft == InternetProbeSettings.defaultAddress && settings.preferences.internetProbeAddress == InternetProbeSettings.defaultAddress)
+            }
+            if normalized == nil && !draft.isEmpty {
+                Text("Enter a valid IPv4 address, such as 9.9.9.9.").foregroundStyle(.red)
+            }
+        }
+        .onAppear { draft = settings.preferences.internetProbeAddress }
+        .onChange(of: settings.preferences.internetProbeAddress) { _, value in draft = value }
+    }
+    private func apply() {
+        guard let normalized else { return }
+        draft = normalized
+        settings.preferences.internetProbeAddress = normalized
+    }
+}
+
+private struct InternetIntegrationRow: View {
+    @ObservedObject var monitor: InternetMonitor
+    var body: some View {
+        IntegrationStatusRow(title: "Internet", symbol: "network", tint: monitor.state == .offline ? .red : .green, value: monitor.status)
     }
 }

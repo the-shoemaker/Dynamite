@@ -29,7 +29,7 @@ public final class NativeUpdater: NSObject, ObservableObject {
         do {
             try controller.updater.start()
             isConfigured = true
-            status = "Checks this app’s feed for signed releases."
+            status = ""
             automaticallyChecks = controller.updater.automaticallyChecksForUpdates
             observations = [
                 controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in

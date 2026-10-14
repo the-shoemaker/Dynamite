@@ -80,48 +80,84 @@ enum PreviewRenderer {
             original = controller.panelFrames.first ?? .zero
             controller.moveFloatingPill(to: target)
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+            controller.moveFloatingPill(to: target + 20)
+            for _ in 0..<100 { controller.moveFloatingPill(to: target + 20) }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.40) {
             intermediate = controller.panelFrames.first ?? .zero
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
             let final = controller.panelFrames.first ?? .zero
             let distance = final.minY - original.minY
-            let passed = abs(distance - (170 - target)) < 1 &&
+            let passed = abs(distance - (170 - target - 20)) < 1 &&
                 intermediate.minY > original.minY && intermediate.minY < final.minY
             print("Intermediate movement: \(intermediate.minY - original.minY) pt")
-            print("\(passed ? "PASS" : "FAIL"): floating window moved upward by \(final.minY - original.minY) pt; expected \(170 - target) pt")
+            print("\(passed ? "PASS" : "FAIL"): floating window moved upward by \(final.minY - original.minY) pt; expected \(170 - target - 20) pt")
             controller.hide(immediately: true)
             completion(passed)
         }
     }
     static func verifyRouting(completion: @escaping (Bool) -> Void) {
-        let controller = IslandCoordinator()
+        let coordinator = IslandCoordinator()
         var passed = true
+        var timerPanels: [Int] = []
+        var primaryPanels: [Int] = []
+        var volumePanels: [Int] = []
+        let offline = Activity(.internetOffline, value: 0, label: "Internet", isPersistentIndicator: true)
         func check(_ value: Bool, _ label: String) {
             print("\(value ? "PASS" : "FAIL"): \(label)")
             passed = passed && value
         }
-        controller.setPersistent(.preview(.capsLock))
+        coordinator.setPersistents([offline, .preview(.clockTimer)])
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            check(controller.visiblePanelCount == 1, "One persistent display")
-            controller.show(.preview(.volume), duration: 0.6, placement: .all)
+            check(coordinator.visiblePanelCount == 2, "Offline and timer have two persistent panels")
+            timerPanels = coordinator.panelNumbers[.clockTimer] ?? []
+            primaryPanels = coordinator.panelNumbers[.internetOffline] ?? []
+            if let top = coordinator.panelFrames[.internetOffline]?.first,
+               let timer = coordinator.panelFrames[.clockTimer]?.first {
+                check(timer.maxY < top.minY + 7, "Timer pill sits below the primary status")
+            } else { check(false, "Persistent stack has frames") }
+            coordinator.show(.preview(.volume), duration: 5, placement: .all)
+            volumePanels = coordinator.panelNumbers[.volume] ?? []
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            check(controller.visiblePanelCount == NSScreen.screens.count, "One temporary panel per target display, without duplicate primary panels")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            check(coordinator.visiblePanelCount == 1 + NSScreen.screens.count,
+                  "Volume replaces offline and leaves the lower timer")
+            check(coordinator.panelFrames[.internetOffline] == nil,
+                  "Offline yields the primary slot")
+            check(primaryPanels.allSatisfy { volumePanels.contains($0) },
+                  "Volume uses the original primary window")
+            coordinator.show(.preview(.brightness), duration: 0.6, placement: .all)
+            check(coordinator.panelNumbers[.brightness] == volumePanels && coordinator.panelFrames[.volume] == nil,
+                  "Brightness smoothly replaces volume in the same windows")
+            check(coordinator.panelNumbers[.clockTimer] == timerPanels,
+                  "Lower timer keeps its window during replacements")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.65) {
-            check(controller.visiblePanelCount == 1 && controller.currentFeature == .capsLock, "Expiry retires extra panels and restores persistent activity")
-            controller.setPersistent(nil)
-            controller.show(.preview(.brightness), duration: 2, placement: .all)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) {
+            check(coordinator.visiblePanelCount == 2 && coordinator.panelFrames[.brightness] == nil && coordinator.panelFrames[.volume] == nil,
+                  "Expiry restores offline without reviving the replaced volume")
+            check(coordinator.panelNumbers[.internetOffline] == primaryPanels,
+                  "Offline restores in the same primary window")
+            check(coordinator.panelNumbers[.clockTimer] == timerPanels,
+                  "Timer stays in its lower window after expiry")
+            coordinator.setPersistents([.preview(.clockTimer)])
+            check(coordinator.panelNumbers[.clockTimer] == timerPanels,
+                  "Reconnect promotes the existing timer window to primary")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.85) {
-            controller.show(.preview(.volume), duration: 2, placement: .main, previewNotch: false)
-            check(controller.visiblePanelCount == NSScreen.screens.count, "Previous displays remain visible during their exit")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            check(coordinator.visiblePanelCount == 1, "Timer alone occupies only the primary slot")
+            coordinator.show(.preview(.volume), duration: 0.4, placement: .all)
+            check(coordinator.panelFrames[.clockTimer] == nil,
+                  "Volume temporarily replaces a lone timer")
+            check(timerPanels.allSatisfy { coordinator.panelNumbers[.volume]?.contains($0) == true },
+                  "Timer replacement reuses the promoted primary window")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.75) {
-            check(controller.visiblePanelCount == 1, "Previous display panels finish retiring")
-            controller.hide(immediately: true)
-            check(controller.visiblePanelCount == 0, "Stop removes all panels and deadlines")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+            check(coordinator.visiblePanelCount == 1 && coordinator.panelNumbers[.clockTimer] == timerPanels,
+                  "Timer returns after the brief alert expires")
+            coordinator.hide(immediately: true)
+            check(coordinator.visiblePanelCount == 0, "Stop removes all panels and deadlines")
             completion(passed)
         }
     }
@@ -194,7 +230,7 @@ enum PreviewRenderer {
             for dark in [true, false] {
                 let geometry = IslandGeometry(safeTop: notched ? 38 : 0, notchWidth: notched ? 220 : 0, referenceHeight: 38)
                 let content = VStack(spacing: 20) {
-                    ForEach([Feature.volume, .brightness, .charging, .powerDisconnected, .chargeTarget, .lowPowerMode, .capsLock, .hotspot, .wifi, .bluetooth], id: \.self) { feature in
+                    ForEach([Feature.volume, .brightness, .charging, .powerDisconnected, .chargeTarget, .lowPowerMode, .capsLock, .internetOffline, .internetOnline, .hotspot, .wifi, .bluetooth], id: \.self) { feature in
                         IslandSurface(activity: Activity(feature, value: 100, label: feature == .chargeTarget ? "Fully charged" : Activity.preview(feature).label, isBoosted: feature == .brightness),
                                       geometry: geometry)
                             .frame(width: 540, height: 50, alignment: .top)
@@ -210,6 +246,24 @@ enum PreviewRenderer {
                 }
                 let name = "\(notched ? "notch" : "pill")-\(dark ? "dark" : "light").png"
                 try png.write(to: destination.appendingPathComponent(name))
+                let stackActivities = [
+                    Activity(.internetOffline, value: 0, label: "Internet", isPersistentIndicator: true),
+                    Activity(.clockTimer, value: 0, label: "Timer", remainingSeconds: 119)
+                ]
+                let pillGeometry = IslandGeometry(safeTop: 0, notchWidth: 0, referenceHeight: 38)
+                let stack = VStack(spacing: 10) {
+                    ForEach(Array(stackActivities.enumerated()), id: \.offset) { index, activity in
+                        IslandSurface(activity: activity, geometry: index == 0 ? geometry : pillGeometry)
+                            .frame(width: 540, height: 39, alignment: .top)
+                    }
+                }.padding(24).background(dark ? Color.black : Color(white: 0.95))
+                    .transaction { $0.animation = nil; $0.disablesAnimations = true }
+                let stackRenderer = ImageRenderer(content: stack)
+                stackRenderer.scale = 2
+                guard let stackImage = stackRenderer.nsImage, let stackTiff = stackImage.tiffRepresentation,
+                      let stackBitmap = NSBitmapImageRep(data: stackTiff),
+                      let stackPNG = stackBitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+                try stackPNG.write(to: destination.appendingPathComponent("stack-\(name)"))
                 let stage = DisplayPreviewScene(activity: Activity(.brightness, value: 100, isBoosted: true),
                                                 notched: notched, blackBackground: dark, animate: false)
                     .frame(width: 520).padding(14).background(Color(nsColor: .windowBackgroundColor))

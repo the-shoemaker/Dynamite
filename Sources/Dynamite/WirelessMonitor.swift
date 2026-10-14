@@ -92,7 +92,7 @@ final class WirelessMonitor: NSObject, ObservableObject, CWEventDelegate {
     private func connectionChanged() {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.running else { return }
-            guard self.debounce == nil else { return }
+            self.debounce?.cancel()
             let token = self.generation
             let work = DispatchWorkItem { [weak self] in
                 guard let self, self.running, self.generation == token else { return }
@@ -100,7 +100,7 @@ final class WirelessMonitor: NSObject, ObservableObject, CWEventDelegate {
                 self.refresh()
             }
             self.debounce = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
         }
     }
     func ssidDidChangeForWiFiInterface(withName interfaceName: String) { connectionChanged() }

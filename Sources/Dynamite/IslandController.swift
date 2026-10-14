@@ -47,13 +47,14 @@ final class IslandController {
     private(set) var currentFeature: Feature?
     private(set) var currentDuration: Double?
     var panelFrames: [NSRect] { panels.map(\.frame) }
+    var panelNumbers: [Int] { panels.map(\.windowNumber) }
     var visiblePanelCount: Int { panels.filter(\.isVisible).count }
 
     static func pointerScreen() -> NSScreen? {
         NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.screens.first
     }
     static func persistentScreen(for feature: Feature) -> NSScreen? {
-        if [.capsLock, .clockTimer, .airDrop].contains(feature), let builtIn = NSScreen.screens.first(where: { CGDisplayIsBuiltin(id($0)) != 0 }) { return builtIn }
+        if [.internetOffline, .capsLock, .clockTimer, .airDrop].contains(feature), let builtIn = NSScreen.screens.first(where: { CGDisplayIsBuiltin(id($0)) != 0 }) { return builtIn }
         let external = NSScreen.screens.filter { CGDisplayIsBuiltin(id($0)) == 0 }
         return external.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
             ?? NSScreen.screens.first
@@ -141,7 +142,10 @@ final class IslandController {
         let opensFromCompact = !panels.isEmpty && !expandedTransfer && !expandedClock && (newExpandedTransfer || newExpandedClock)
         let reusablePanels = Dictionary(uniqueKeysWithValues: zip(screenIDs, panels))
         var retiringPanels: [NSPanel] = []
-        if screenIDs != screens.map(Self.id) || externalPreview != newExternalPreview || expandedTransfer != newExpandedTransfer || expandedClock != newExpandedClock {
+        let geometryChanged = !displayLayouts.isEmpty && displayLayouts.map(\.geometry) != screens.map {
+            Self.geometry(for: $0, externalPreview: newExternalPreview, floatingTopGap: floatingTopGap)
+        }
+        if screenIDs != screens.map(Self.id) || externalPreview != newExternalPreview || expandedTransfer != newExpandedTransfer || expandedClock != newExpandedClock || geometryChanged {
             retiringPanels = closePanels(retainingWindows: true)
         }
         externalPreview = newExternalPreview
@@ -189,14 +193,15 @@ final class IslandController {
         }
     }
     func moveFloatingPill(to topGap: Double) {
-        guard let previous = floatingTopGap else { return }
+        guard let previous = floatingTopGap, previous != topGap else { return }
         floatingTopGap = topGap
         NSAnimationContext.runAnimationGroup { context in
             context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.32
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            for panel in panels {
+            for (panel, layout) in zip(panels, displayLayouts) {
                 var destination = panel.frame
-                destination.origin.y += previous - topGap
+                // Use the absolute destination when an earlier move is still animating.
+                destination.origin.y = layout.frame.maxY - topGap - destination.height + 6
                 panel.animator().setFrame(destination, display: true)
             }
         }
@@ -230,7 +235,7 @@ final class IslandController {
         show(activity, duration: nil, placement: placement)
     }
     func updateVisibleActivity(_ activity: Activity) {
-        guard currentFeature == activity.feature, presentation.expanded,
+        guard currentFeature == activity.feature,
               presentation.activity?.sourceDisplayID == activity.sourceDisplayID else { return }
         presentation.activity = activity
     }

@@ -59,16 +59,14 @@ struct SetupView: View {
     @ObservedObject var loginItem: LoginItemController
     let finish: () -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 10) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
-                    .resizable().scaledToFit().frame(width: 48, height: 48)
+                    .resizable().scaledToFit().frame(width: 32, height: 32)
                     .accessibilityHidden(true)
-                Text("Permission setup").font(.title2.bold())
+                Text("Set up Dynamite").font(.title2.weight(.semibold))
             }
-            Text("macOS asks for each permission separately. Optional access enables the features below; you can add it later in Integrations.")
-                .font(.callout).foregroundStyle(.secondary)
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 PermissionRow(title: "Accessibility", symbol: "hand.raised", detail: "Keyboard controls, Caps Lock, and timer actions.",
                     status: access.accessibility ? "Allowed" : "Needs access", granted: access.accessibility) { access.requestAccessibility() }
                 Divider()
@@ -77,16 +75,13 @@ struct SetupView: View {
                 Divider()
                 PermissionRow(title: "AirDrop · optional", symbol: "folder", detail: "Downloads access for received files. No file contents are read.",
                     status: access.downloads, granted: access.downloads == "Available",
-                    actionTitle: access.downloads == "Not checked" ? "Check access…" : "Settings…") { access.requestDownloads() }
-            }.padding(16).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
+                    actionTitle: access.downloads == "Not checked" ? "Check access…" : "Settings") { access.requestDownloads() }
+            }.padding(14).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
             Toggle("Open Dynamite when I log in", isOn: Binding(get: { loginItem.enabled }, set: { loginItem.setEnabled($0) }))
             if let message = loginItem.message {
                 Text(message).font(.caption).foregroundStyle(.secondary)
                 Button("Open Login Items settings") { loginItem.openSettings() }
             }
-            Text("Keep Dynamite in Applications before enabling login startup. Bluetooth access, if needed, is requested by macOS when the integration starts.")
-                .font(.caption).foregroundStyle(.secondary)
-            Spacer(minLength: 0)
             HStack {
                 Button("Check again") { access.refresh(); loginItem.refresh() }.disabled(access.checking)
                 Spacer()
@@ -94,7 +89,7 @@ struct SetupView: View {
                 Button("Start Dynamite", action: finish).buttonStyle(.borderedProminent)
                     .disabled(!access.accessibility).keyboardShortcut(.defaultAction)
             }
-        }.padding(24).frame(width: 540, height: 580)
+        }.padding(20).frame(width: 500).fixedSize(horizontal: false, vertical: true)
         .onAppear { access.refresh(); loginItem.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             access.refresh(); loginItem.refresh()

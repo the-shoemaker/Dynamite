@@ -1,109 +1,134 @@
 import AppKit
 import IslandCore
 
-/// Keeps display placement separate from the animation of an individual island.
-/// Only visible/retiring slots own panels; there is one temporary expiry timer.
+/// Compact alerts share the primary panel on each target display. Additional
+/// persistent activities retain lower panels while the primary content changes.
 final class IslandCoordinator {
     var airDrop: AirDropMonitor?
     var clock: ClockMonitor?
     var nativeNotifications: NativeActivityNotifications?
     var onClockHoverChanged: (() -> Void)?
     var onTemporaryExpired: (() -> Void)?
-    private var persistent: Activity?
-    private var temporary: Activity?
-    private var temporaryScreens: [NSScreen] = []
-    private var previewNotch: Bool?
+    private var schedule = ActivitySchedule()
+    private var temporaryScreens: [Feature: [UInt32]] = [:]
+    private var previewStyles: [Feature: Bool] = [:]
     private var expiry: Timer?
-    private(set) var currentDuration: Double?
     private var entries: [ActivityRouting.Slot: IslandController] = [:]
     private var removals: [ActivityRouting.Slot: DispatchWorkItem] = [:]
-    private var promoted = Set<ActivityRouting.Slot>()
-    var currentFeature: Feature? { (temporary ?? persistent)?.feature }
-    var currentActivity: Activity? { temporary ?? persistent }
+    var currentFeature: Feature? { schedule.current?.feature }
+    var currentActivity: Activity? { schedule.current }
+    var currentDuration: Double? { schedule.temporaries.last?.duration }
     var clockHovered: Bool { entries.values.contains { $0.clockHovered } }
     var visiblePanelCount: Int { entries.values.reduce(0) { $0 + $1.visiblePanelCount } }
+    private var visibleEntries: [(Feature, IslandController)] {
+        entries.compactMap { slot, controller in
+            guard removals[slot] == nil, let feature = controller.currentFeature else { return nil }
+            return (feature, controller)
+        }
+    }
+    var panelFrames: [Feature: [NSRect]] {
+        Dictionary(grouping: visibleEntries, by: { $0.0 }).mapValues { $0.flatMap { $0.1.panelFrames } }
+    }
+    var panelNumbers: [Feature: [Int]] {
+        Dictionary(grouping: visibleEntries, by: { $0.0 }).mapValues { $0.flatMap { $0.1.panelNumbers } }
+    }
     private func id(_ screen: NSScreen) -> UInt32 {
         screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32 ?? 0
     }
-    private var expanded: Bool {
-        persistent?.feature == .airDrop && airDrop?.transfer != nil ||
-        persistent?.feature == .clockTimer && nativeNotifications?.clockActions.isEmpty == false
+    private func isExpanded(_ activity: Activity) -> Bool {
+        activity.feature == .airDrop && airDrop?.transfer != nil ||
+        activity.feature == .clockTimer && nativeNotifications?.clockActions.isEmpty == false
     }
-    func setPersistent(_ activity: Activity?) {
-        persistent = activity
+    func setPersistent(_ activity: Activity?) { setPersistents(activity.map { [$0] } ?? []) }
+    func setPersistents(_ activities: [Activity]) {
+        schedule.setPersistents(activities)
         reconcile()
     }
     func show(_ activity: Activity, duration: Double?, placement: DisplayPlacement, previewNotch: Bool? = nil) {
         guard let duration else { setPersistent(activity); return }
-        // A pill promoted from beneath a card belongs to that temporary event.
-        // A later event uses the display's normal notch/pill geometry again.
-        if temporary?.feature != activity.feature { retirePromoted() }
-        temporary = activity
-        self.previewNotch = previewNotch
+        schedule.present(activity, duration: duration, now: ProcessInfo.processInfo.systemUptime)
+        previewStyles[activity.feature] = previewNotch
+        let screens: [NSScreen]
         if previewNotch != nil {
-            temporaryScreens = (NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.screens.first).map { [$0] } ?? []
-        } else { temporaryScreens = IslandController.targetScreens(placement) }
-        currentDuration = duration
+            screens = (NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.screens.first).map { [$0] } ?? []
+        } else { screens = IslandController.targetScreens(placement) }
+        temporaryScreens[activity.feature] = screens.map(id)
         reconcile()
-        scheduleExpiry(duration)
+        scheduleExpiry()
     }
-    private func scheduleExpiry(_ duration: Double) {
-        expiry?.invalidate()
-        let timer = Timer(timeInterval: duration, repeats: false) { [weak self] _ in
+    private func scheduleExpiry() {
+        expiry?.invalidate(); expiry = nil
+        guard let deadline = schedule.expiresAt else { return }
+        let timer = Timer(timeInterval: max(0.001, deadline - ProcessInfo.processInfo.systemUptime), repeats: false) { [weak self] _ in
             guard let self else { return }
-            if let onTemporaryExpired = self.onTemporaryExpired { onTemporaryExpired() }
-            else { self.endTemporary() }
+            self.expireTemporary()
+            self.onTemporaryExpired?()
         }
         expiry = timer
         RunLoop.main.add(timer, forMode: .common)
     }
-    func endTemporary() {
-        expiry?.invalidate(); expiry = nil
-        retirePromoted()
-        temporary = nil; temporaryScreens = []; currentDuration = nil; previewNotch = nil
+    func expireTemporary() {
+        schedule.expire(at: ProcessInfo.processInfo.systemUptime)
         reconcile()
+        scheduleExpiry()
+    }
+    func endTemporary() {
+        schedule.endTemporary()
+        temporaryScreens.removeAll(); previewStyles.removeAll()
+        reconcile(); scheduleExpiry()
+    }
+    func remove(_ feature: Feature) {
+        schedule.remove(feature)
+        temporaryScreens.removeValue(forKey: feature); previewStyles.removeValue(forKey: feature)
+        reconcile(); scheduleExpiry()
     }
     func restart(duration: Double) {
-        guard temporary != nil else { return }
-        currentDuration = duration
-        for (slot, controller) in entries where removals[slot] == nil && controller.currentFeature == temporary?.feature {
-            controller.restartAnimation()
-        }
-        scheduleExpiry(duration)
+        guard let activity = schedule.temporary else { return }
+        restart(activity.feature, duration: duration)
+    }
+    func restart(_ feature: Feature, duration: Double) {
+        guard let activity = schedule.temporaries.first(where: { $0.activity.feature == feature })?.activity else { return }
+        schedule.present(activity, duration: duration, now: ProcessInfo.processInfo.systemUptime)
+        // Duration changes extend only this deadline, without replaying other rows.
+        scheduleExpiry()
     }
     func updateVisibleActivity(_ activity: Activity) {
-        guard temporary?.feature == activity.feature,
-              temporary?.sourceDisplayID == activity.sourceDisplayID else { return }
-        temporary = activity
+        schedule.update(activity)
         reconcile()
     }
     private func reconcile() {
-        let persistentScreen = persistent.flatMap { IslandController.persistentScreen(for: $0.feature) }
-        let screen = persistentScreen.map(id)
         let available = Dictionary(uniqueKeysWithValues: NSScreen.screens.map { (id($0), $0) })
-        temporaryScreens = temporaryScreens.compactMap { available[id($0)] }
-        let desired = ActivityRouting.slots(persistentScreen: screen, expanded: expanded,
-            temporaryScreens: temporary == nil ? [] : temporaryScreens.map(id))
-
-        for slot in promoted where desired[slot] != .temporary {
-            removals.removeValue(forKey: slot)?.cancel()
-            if let controller = entries.removeValue(forKey: slot) { retireDetached(controller) }
-            promoted.remove(slot)
+        var requests = schedule.persistents.map { activity -> ActivityRouting.Request in
+            let screens = IslandController.persistentScreen(for: activity.feature).map { [id($0)] } ?? []
+            return .init(activity.feature, screens: screens, expanded: isExpanded(activity))
         }
-        // Keep the same floating window when its card goes away. WindowServer
-        // moves it; SwiftUI does not rerender the pill on each movement frame.
-        for (slot, source) in desired where source == .temporary && !slot.belowCard {
-            let lower = ActivityRouting.Slot(screen: slot.screen, belowCard: true)
-            if let controller = entries.removeValue(forKey: lower), let display = available[slot.screen] {
-                removals.removeValue(forKey: lower)?.cancel()
-                if let old = entries.removeValue(forKey: slot) { retireDetached(old) }
-                removals.removeValue(forKey: slot)?.cancel()
-                entries[slot] = controller
-                promoted.insert(slot)
-                controller.moveFloatingPill(to: display.safeAreaInsets.top + 6)
+        if let activity = schedule.temporary {
+            requests.append(.init(activity.feature,
+                screens: (temporaryScreens[activity.feature] ?? []).filter { available[$0] != nil }, source: .temporary))
+        }
+        let rows = ActivityRouting.stacks(requests)
+        let desired = Set(rows.map(\.slot))
+        // Keep an existing long-running panel when it becomes a lower pill.
+        for row in rows where row.index > 0 && entries[row.slot] == nil {
+            let primary = ActivityRouting.Slot(screen: row.slot.screen, position: .primary)
+            if let controller = entries[primary], controller.currentFeature == row.feature {
+                removals.removeValue(forKey: primary)?.cancel()
+                entries[row.slot] = entries.removeValue(forKey: primary)
             }
         }
-        for (slot, controller) in entries where desired[slot] == nil && removals[slot] == nil {
+        // Reuse a lower panel when its persistent activity returns to the notch.
+        for row in rows where row.index == 0 {
+            let lower = ActivityRouting.Slot(screen: row.slot.screen, position: .secondary(row.feature))
+            guard !desired.contains(lower), let controller = entries.removeValue(forKey: lower) else { continue }
+            removals.removeValue(forKey: lower)?.cancel()
+            removals.removeValue(forKey: row.slot)?.cancel()
+            if let old = entries.removeValue(forKey: row.slot) { retireDetached(old) }
+            entries[row.slot] = controller
+        }
+        let activeFeatures = Set(schedule.temporaries.map { $0.activity.feature })
+        temporaryScreens = temporaryScreens.filter { activeFeatures.contains($0.key) }
+        previewStyles = previewStyles.filter { activeFeatures.contains($0.key) }
+        for (slot, controller) in entries where !desired.contains(slot) && removals[slot] == nil {
             controller.hide()
             let removal = DispatchWorkItem { [weak self, weak controller] in
                 guard let self, self.entries[slot] === controller else { return }
@@ -113,8 +138,11 @@ final class IslandCoordinator {
             removals[slot] = removal
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.75, execute: removal)
         }
-        for (slot, source) in desired {
-            guard let display = available[slot.screen], let activity = source == .persistent ? persistent : temporary else { continue }
+        var nextTop: [UInt32: Double] = [:]
+        for row in rows {
+            let slot = row.slot
+            guard let display = available[slot.screen],
+                  let activity = row.source == .persistent ? schedule.persistents.first(where: { $0.feature == row.feature }) : schedule.temporary else { continue }
             removals.removeValue(forKey: slot)?.cancel()
             let controller: IslandController
             if let existing = entries[slot] { controller = existing }
@@ -125,44 +153,43 @@ final class IslandCoordinator {
                 controller.onClockHoverChanged = { [weak self] in self?.onClockHoverChanged?() }
                 controller.containsRelatedActivity = { [weak self] point in self?.containsActivity(at: point) ?? false }
                 entries[slot] = controller
-                if slot.belowCard {
-                    let geometry = IslandController.geometry(for: display)
-                    let height = persistent?.feature == .airDrop ? AirDropExpandedView.height(for: geometry) : geometry.shellHeight + ClockAlertView.extraHeight
-                    controller.floatingTopGap = geometry.topGap + height + 14
-                }
             }
+            let preview = row.source == .temporary ? previewStyles[activity.feature] : nil
+            let floating = nextTop[slot.screen]
+            let wasFloating = controller.floatingTopGap != nil
+            let modeChanged = wasFloating != (floating != nil)
+            if let floating, wasFloating { controller.moveFloatingPill(to: floating) }
+            else { controller.floatingTopGap = floating }
             controller.targetScreen = display
-            let card = source == .persistent && expanded
-            let configurationChanged = controller.allowsExpandedCards != card
+            let card = row.source == .persistent && isExpanded(activity)
+            let configurationChanged = controller.allowsExpandedCards != card || modeChanged
             controller.allowsExpandedCards = card
-            if controller.currentFeature != activity.feature || configurationChanged || controller.presentation.closing || controller.previewStyle != (source == .temporary ? previewNotch : nil) {
-                controller.show(activity, duration: nil, placement: .main, previewNotch: source == .temporary ? previewNotch : nil)
+            if controller.currentFeature != activity.feature || configurationChanged || controller.presentation.closing || controller.previewStyle != preview {
+                controller.show(activity, duration: nil, placement: .main, previewNotch: preview)
             } else { controller.updateVisibleActivity(activity) }
+            let geometry = IslandController.geometry(for: display, externalPreview: preview == false, floatingTopGap: floating)
+            let height = card && activity.feature == .airDrop ? AirDropExpandedView.height(for: geometry) :
+                card ? geometry.shellHeight + ClockAlertView.extraHeight : geometry.shellHeight
+            nextTop[slot.screen] = geometry.topGap + height + 10
         }
-    }
-    private func retirePromoted() {
-        for slot in promoted {
-            removals.removeValue(forKey: slot)?.cancel()
-            if let controller = entries.removeValue(forKey: slot) { retireDetached(controller) }
-        }
-        promoted.removeAll()
     }
     private func retireDetached(_ controller: IslandController) {
         controller.hide()
-        // A finite retention keeps its exit animation alive, without polling.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { controller.hide(immediately: true) }
     }
-    func containsActivity(at point: NSPoint) -> Bool { entries.values.contains { $0.containsActivity(at: point) } }
+    func containsActivity(at point: NSPoint) -> Bool {
+        entries.contains { removals[$0.key] == nil && $0.value.containsActivity(at: point) }
+    }
     func screenParametersChanged() {
         entries.values.forEach { $0.screenParametersChanged() }
         reconcile()
     }
     func hide(immediately: Bool = false) {
         expiry?.invalidate(); expiry = nil
-        persistent = nil; temporary = nil; temporaryScreens = []; currentDuration = nil
+        schedule.reset(); temporaryScreens.removeAll(); previewStyles.removeAll()
         if immediately {
             removals.values.forEach { $0.cancel() }; removals.removeAll()
-            entries.values.forEach { $0.hide(immediately: true) }; entries.removeAll(); promoted.removeAll()
+            entries.values.forEach { $0.hide(immediately: true) }; entries.removeAll()
         } else { reconcile() }
     }
     deinit { expiry?.invalidate(); removals.values.forEach { $0.cancel() } }

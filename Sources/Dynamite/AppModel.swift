@@ -11,6 +11,10 @@ final class AppModel: ObservableObject {
     let updater = NativeUpdater()
     let diagnostic = PerformanceDiagnostic()
     let wireless = WirelessMonitor()
+    let internet = InternetMonitor()
+    private var connectionAnnouncements = ConnectionAnnouncements()
+    private var onlineAnnouncement: DispatchWorkItem?
+    private var previousOfflinePersistence = false
     let bluetooth = BluetoothMonitor()
     let microphone = MicrophoneMonitor()
     let clock = ClockMonitor()
@@ -59,7 +63,9 @@ final class AppModel: ObservableObject {
 
         }
         bluetooth.onAirPodsReady = { [weak self] in self?.nativeNotifications.airPodsConnected() }
-        wireless.onConnect = { [weak self] activity in self?.show(activity) }
+        bluetooth.onUpdate = { [weak self] activity in self?.island.updateVisibleActivity(activity) }
+        wireless.onConnect = { [weak self] activity in self?.wirelessConnected(activity) }
+        internet.onChange = { [weak self] state, announce in self?.internetChanged(state, announce: announce) }
         microphone.onChange = { [weak self] activity in self?.show(activity) }
         brightness.onSettled = { [weak self] activity in
             DispatchQueue.main.async { self?.island.updateVisibleActivity(activity) }
@@ -102,11 +108,11 @@ final class AppModel: ObservableObject {
         capsLock.onChange = { [weak self] active in
             guard let self else { return }
             self.capsLockActive = active
-            if !active, self.schedule.temporary?.feature == .capsLock { self.schedule.remove(.capsLock) }
+            if !active { self.removeActivity(.capsLock) }
             self.updateCapsLock()
         }
         capsLock.onUserToggle = { [weak self] active in
-            guard let self, active, self.schedule.persistent?.feature == .clockTimer else { return }
+            guard let self, active, self.schedule.persistents.contains(where: { $0.feature == .clockTimer }) else { return }
             self.show(.preview(.capsLock))
         }
         mediaKeys.handle = { [weak self] key, fine, completion in
@@ -124,7 +130,11 @@ final class AppModel: ObservableObject {
                                            smooth: preferences.smoothBrightness, queue: self.hardwareQueue)
                 completion(activity != nil)
                 if let activity {
-                    DispatchQueue.main.async { [weak self] in self?.show(activity) }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        if activity.feature == .volume { self.nativeNotifications.volumeChanged() }
+                        self.show(activity)
+                    }
                 }
             }
         }
@@ -137,6 +147,7 @@ final class AppModel: ObservableObject {
         }
         settings.$preferences.removeDuplicates(by: { old, new in
             old.paused == new.paused && old.placement == new.placement &&
+            old.keepOfflineVisible == new.keepOfflineVisible && old.internetProbeAddress == new.internetProbeAddress &&
             Feature.allCases.allSatisfy { old.preference(for: $0).enabled == new.preference(for: $0).enabled }
         }).dropFirst().sink { [weak self] preferences in
             // @Published emits before assignment. Reconcile after the store has changed.
@@ -167,6 +178,9 @@ final class AppModel: ObservableObject {
                 self?.schedule.reset()
                 self?.island.hide(immediately: true)
                 self?.wireless.stop()
+                self?.internet.stop()
+                self?.onlineAnnouncement?.cancel(); self?.onlineAnnouncement = nil
+                self?.connectionAnnouncements.reset()
                 self?.bluetooth.stop()
                 self?.microphone.stop()
                 self?.clock.stop()
@@ -190,11 +204,26 @@ final class AppModel: ObservableObject {
     func refreshConnections() {
         reconcile(settings.preferences)
         wireless.refresh()
+        internet.refresh()
         loginItem.refresh()
         clock.refresh()
         if settings.preferences.preference(for: .focus).enabled && !settings.preferences.paused { focus.refresh() }
     }
     private func reconcile(_ preferences: Preferences) {
+        let watchInternet = !sleeping && !preferences.paused &&
+            [.internetOffline, .internetOnline].contains { preferences.preference(for: $0).enabled }
+        if watchInternet {
+            if internet.start(address: preferences.internetProbeAddress) {
+                removeActivity(.internetOffline); removeActivity(.internetOnline)
+                onlineAnnouncement?.cancel(); onlineAnnouncement = nil
+            }
+        }
+        else {
+            internet.stop()
+            onlineAnnouncement?.cancel(); onlineAnnouncement = nil
+            connectionAnnouncements.reset()
+            removeActivity(.internetOffline); removeActivity(.internetOnline)
+        }
         if !sleeping && !preferences.paused && preferences.preference(for: .microphoneMute).enabled { microphone.start() }
         else { microphone.stop() }
         nativeNotifications.configure(Set([Feature.clockTimer, .airDrop, .airPods, .focus, .volume].filter {
@@ -239,13 +268,17 @@ final class AppModel: ObservableObject {
             batteryRunning = false
             transitions.reset(to: nil)
         }
-        let disabledCurrent = island.currentFeature.map { !preferences.preference(for: $0).enabled } ?? false
-        for feature in Feature.allCases where !preferences.preference(for: feature).enabled { schedule.remove(feature) }
-        if preferences.paused || disabledCurrent || (previousPlacement != nil && previousPlacement != preferences.placement) {
+        for feature in Feature.allCases where !preferences.preference(for: feature).enabled { removeActivity(feature) }
+        if preferences.paused || (previousPlacement != nil && previousPlacement != preferences.placement) {
             island.hide(immediately: true)
             schedule.reset()
         }
         previousPlacement = preferences.placement
+        if previousOfflinePersistence != preferences.keepOfflineVisible {
+            removeActivity(.internetOffline)
+            if !preferences.keepOfflineVisible && internet.state == .offline { show(.preview(.internetOffline)) }
+        }
+        previousOfflinePersistence = preferences.keepOfflineVisible
         let needsCapsLock = !preferences.paused && preferences.preference(for: .capsLock).enabled
         if needsCapsLock {
             capsLockRunning = true
@@ -266,12 +299,12 @@ final class AppModel: ObservableObject {
     }
     private func restartChangedDuration() {
         updateCapsLock()
-        guard let activity = island.currentActivity, schedule.temporary?.feature == activity.feature,
-              let duration = island.currentDuration,
-              settings.preferences.preference(for: activity.feature).duration != duration else { return }
-        let newDuration = settings.preferences.preference(for: activity.feature).duration
-        schedule.present(activity, duration: newDuration, now: ProcessInfo.processInfo.systemUptime)
-        island.restart(duration: newDuration)
+        for entry in schedule.temporaries {
+            let newDuration = settings.preferences.preference(for: entry.activity.feature).duration
+            guard newDuration != entry.duration else { continue }
+            schedule.present(entry.activity, duration: newDuration, now: ProcessInfo.processInfo.systemUptime)
+            island.restart(entry.activity.feature, duration: newDuration)
+        }
     }
     private func updateCapsLock() {
         let preferences = settings.preferences
@@ -306,26 +339,71 @@ final class AppModel: ObservableObject {
                 let work = DispatchWorkItem { [weak self] in
                     guard let self, self.finishHandoff.isImminent(at: ProcessInfo.processInfo.systemUptime) else { return }
                     self.finishHandoffWork = nil
-                    self.temporaryExpired()
+                    self.endTemporaryForClock()
                 }
                 finishHandoffWork = work
                 DispatchQueue.main.asyncAfter(deadline: .now() + max(0, deadline - now), execute: work)
             }
         }
-        // A delayed/native finish notification still wins over an older alert.
-        // Later alerts are allowed alongside the already-expanded card.
-        if hasAlert && !hadClockAlert { temporaryExpired() }
+        // Preserve the existing final-second handoff into the actionable card.
+        if hasAlert && !hadClockAlert { endTemporaryForClock() }
         hadClockAlert = hasAlert
         let timer = hasAlert ? Activity(.clockTimer, value: 0, label: "Timer finished", remainingSeconds: 0) :
             (clockEnabled && timerVisible ? clockActivity : nil)
         let transfer = !preferences.paused && preferences.preference(for: .airDrop).enabled ? airDropActivity : nil
-        schedule.setPersistent(transfer ?? timer ?? (active ? .preview(.capsLock) : nil))
-        island.setPersistent(schedule.persistent)
+        let offline = !sleeping && !preferences.paused && preferences.keepOfflineVisible &&
+            preferences.preference(for: .internetOffline).enabled && internet.state == .offline ?
+            Activity(.internetOffline, value: 0, label: "Internet", isPersistentIndicator: true) : nil
+        let longRunning = [offline, transfer, timer].compactMap { $0 }
+        schedule.setPersistents(longRunning.isEmpty ? (active ? [.preview(.capsLock)] : []) : longRunning)
+        island.setPersistents(schedule.persistents)
         if schedule.temporary == nil { island.endTemporary() }
     }
-    private func temporaryExpired() {
-        schedule.expire(at: max(ProcessInfo.processInfo.systemUptime, schedule.expiresAt ?? 0))
+    private func endTemporaryForClock() {
+        schedule.endTemporary()
         island.endTemporary()
+    }
+    private func temporaryExpired() {
+        schedule.expire(at: ProcessInfo.processInfo.systemUptime)
+        island.expireTemporary()
+    }
+
+    private func removeActivity(_ feature: Feature) {
+        schedule.remove(feature)
+        island.remove(feature)
+    }
+    private func wirelessConnected(_ activity: Activity) {
+        let preferences = settings.preferences
+        guard !preferences.paused, preferences.preference(for: activity.feature).enabled else { return }
+        connectionAnnouncements.linked(at: ProcessInfo.processInfo.systemUptime)
+        onlineAnnouncement?.cancel(); onlineAnnouncement = nil
+        removeActivity(.internetOnline)
+        removeActivity(activity.feature == .wifi ? .hotspot : .wifi)
+        show(activity)
+    }
+    private func internetChanged(_ state: InternetState, announce: Bool) {
+        onlineAnnouncement?.cancel(); onlineAnnouncement = nil
+        // Remove the opposite state now. Its remaining duration never keeps a
+        // stale internet indication onscreen; the ordinary exit animation stays.
+        removeActivity(state == .online ? .internetOffline : .internetOnline)
+        updateCapsLock()
+        let preferences = settings.preferences
+        guard announce, !preferences.paused, !sleeping else { return }
+        if state == .offline {
+            if !preferences.keepOfflineVisible { show(.preview(.internetOffline)) }
+        } else if state == .online && preferences.preference(for: .internetOnline).enabled {
+            // Allow the settled Wi-Fi/hotspot event to provide the reconnect
+            // confirmation first. Recovery on the same link still gets its HUD.
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.internet.running, self.internet.state == .online,
+                      !self.sleeping, !self.settings.preferences.paused,
+                      self.connectionAnnouncements.shouldAnnounceOnline(at: ProcessInfo.processInfo.systemUptime) else { return }
+                self.onlineAnnouncement = nil
+                self.show(.preview(.internetOnline))
+            }
+            onlineAnnouncement = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+        }
     }
 
     func preview(_ feature: Feature, notch: Bool? = nil) {
@@ -347,6 +425,9 @@ final class AppModel: ObservableObject {
         settings.flush()
         shades.clear()
         wireless.stop()
+        internet.stop()
+        onlineAnnouncement?.cancel(); onlineAnnouncement = nil
+        connectionAnnouncements.reset()
         bluetooth.stop()
         hardwareQueue.async { [weak self] in self?.audio.stopMonitoring() }
         microphone.stop()

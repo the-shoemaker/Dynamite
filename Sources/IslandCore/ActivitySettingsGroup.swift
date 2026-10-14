@@ -14,7 +14,7 @@ public struct ActivitySettingsGroup: Identifiable {
             groups.append(Self(id: "battery", title: "Battery", features: [.charging, .powerDisconnected, .chargeTarget, .lowBattery, .lowPowerMode]))
         }
         groups.append(Self(id: "activities", title: "Focus & timers", features: [.focus, .clockTimer]))
-        groups.append(Self(id: "connections", title: "Connections", features: [.wifi, .hotspot, .bluetooth, .airPods, .airDrop]))
+        groups.append(Self(id: "connections", title: "Connections", features: [.internetOffline, .internetOnline, .wifi, .hotspot, .bluetooth, .airPods, .airDrop]))
         return groups
     }
 }

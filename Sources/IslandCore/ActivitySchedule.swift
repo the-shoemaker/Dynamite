@@ -1,26 +1,37 @@
 import Foundation
 
-/// Providers submit state here; rendering never decides which source wins.
-/// Persistent state returns only after the latest temporary activity expires.
+/// One temporary slot replaces the primary status until its own deadline.
+/// Persistent state is retained underneath and restores without a new event.
 public struct ActivitySchedule {
-    public private(set) var persistent: Activity?
-    public private(set) var temporary: Activity?
-    public private(set) var expiresAt: TimeInterval?
+    public struct Temporary: Equatable {
+        public var activity: Activity
+        public var duration: TimeInterval
+        public var expiresAt: TimeInterval
+    }
+    public private(set) var persistents: [Activity] = []
+    public private(set) var temporaries: [Temporary] = []
     public init() {}
+    public var persistent: Activity? { persistents.first }
+    public var temporary: Activity? { temporaries.last?.activity }
+    public var expiresAt: TimeInterval? { temporaries.map(\.expiresAt).min() }
     public var current: Activity? { temporary ?? persistent }
-    public mutating func setPersistent(_ activity: Activity?) { persistent = activity }
+    public mutating func setPersistent(_ activity: Activity?) { setPersistents(activity.map { [$0] } ?? []) }
+    public mutating func setPersistents(_ activities: [Activity]) {
+        var seen = Set<Feature>()
+        persistents = activities.filter { seen.insert($0.feature).inserted }
+    }
     public mutating func present(_ activity: Activity, duration: TimeInterval, now: TimeInterval) {
-        temporary = activity
-        expiresAt = now + max(0, duration)
+        let entry = Temporary(activity: activity, duration: duration, expiresAt: now + max(0, duration))
+        temporaries = [entry]
     }
-    public mutating func expire(at now: TimeInterval) {
-        guard let expiresAt, now >= expiresAt else { return }
-        temporary = nil
-        self.expiresAt = nil
+    public mutating func update(_ activity: Activity) {
+        if let index = temporaries.firstIndex(where: { $0.activity.feature == activity.feature && $0.activity.sourceDisplayID == activity.sourceDisplayID }) { temporaries[index].activity = activity }
     }
+    public mutating func expire(at now: TimeInterval) { temporaries.removeAll { now >= $0.expiresAt } }
     public mutating func remove(_ feature: Feature) {
-        if persistent?.feature == feature { persistent = nil }
-        if temporary?.feature == feature { temporary = nil; expiresAt = nil }
+        persistents.removeAll { $0.feature == feature }
+        temporaries.removeAll { $0.activity.feature == feature }
     }
+    public mutating func endTemporary() { temporaries.removeAll() }
     public mutating func reset() { self = ActivitySchedule() }
 }

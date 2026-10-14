@@ -6,6 +6,8 @@ extension Feature {
         switch self {
         case .volume, .brightness, .powerDisconnected: return .white
         case .microphoneMute: return Color(red: 1, green: 0.34, blue: 0.35)
+        case .internetOffline: return Color(red: 1, green: 0.28, blue: 0.29)
+        case .internetOnline: return Color(red: 0.29, green: 0.91, blue: 0.48)
         case .charging, .chargeTarget, .airPods: return Color(red: 0.29, green: 0.91, blue: 0.48)
         case .lowPowerMode, .clockTimer: return IslandStyle.orange
         case .focus: return .purple
@@ -18,6 +20,7 @@ extension Feature {
 
 extension Activity {
     var tint: Color {
+        if feature == .internetOffline && isPersistentIndicator { return Color(red: 0.65, green: 0.40, blue: 0.95) }
         if feature == .microphoneMute && isActive { return Color(red: 0.29, green: 0.91, blue: 0.48) }
         if feature == .lowPowerMode && !isActive { return .white }
         if feature == .focus && !isActive { return feature.tint.opacity(0.5) }
@@ -61,7 +64,7 @@ struct IslandSurface: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var sides: (left: Double, right: Double) { IslandLayout.widths(activity, geometry: geometry) }
     private var width: Double { geometry.notchWidth + sides.left + sides.right }
-    private var contentKey: String { "\(activity.feature.rawValue)-\(activity.isActive)" }
+    private var contentKey: String { "\(activity.feature.rawValue)-\(activity.isActive)-\(activity.showsPercentage)" }
     private func replacement(from offset: CGFloat) -> AnyTransition {
         reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.78)).combined(with: .offset(x: offset, y: 2))
     }
@@ -78,6 +81,7 @@ struct IslandSurface: View {
                 .animation(reduceMotion ? nil : .spring(response: 0.18, dampingFraction: 0.6), value: closing)
                 .animation(reduceMotion ? nil : IslandStyle.motion, value: activity.feature)
                 .animation(reduceMotion ? .easeOut(duration: 0.15) : IslandStyle.motion, value: activity.isActive)
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : IslandStyle.motion, value: activity.showsPercentage)
                 // On wallpaper the black lip is visible after the rim has faded.
                 // Dissolve the fill during the same middle phase, while the
                 // wings are still outside the camera; never shrink its height.
@@ -93,6 +97,7 @@ struct IslandSurface: View {
                 .animation(reduceMotion ? nil : .spring(response: 0.18, dampingFraction: 0.6), value: closing)
                 .animation(reduceMotion ? nil : IslandStyle.motion, value: activity.feature)
                 .animation(reduceMotion ? .easeOut(duration: 0.15) : IslandStyle.motion, value: activity.isActive)
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : IslandStyle.motion, value: activity.showsPercentage)
                 // The notch rim moves horizontally first, then fades mid-collapse
                 // before reaching the camera. External pills keep their own fade.
                 .opacity(expanded ? 1 : 0)
@@ -145,7 +150,11 @@ struct IslandSurface: View {
                         Text("Active").font(.system(size: 12, weight: .semibold)).fixedSize()
                     } else if activity.feature == .microphoneMute {
                         Text(activity.isActive ? "Unmuted" : "Muted").font(.system(size: 11, weight: .semibold)).fixedSize()
+                    } else if [.internetOffline, .internetOnline].contains(activity.feature) {
+                        Text(activity.feature == .internetOffline ? "Offline" : "Online").font(.system(size: 11, weight: .semibold)).fixedSize()
                     } else if [.hotspot, .wifi, .bluetooth].contains(activity.feature) {
+                        Text("Connected").font(.system(size: 11, weight: .medium)).fixedSize()
+                    } else if activity.feature == .airPods && !activity.showsPercentage {
                         Text("Connected").font(.system(size: 11, weight: .medium)).fixedSize()
                     } else {
                     Text("\(activity.value)")
@@ -199,11 +208,12 @@ struct IslandSurface: View {
             returnContentReady = true
         }
         .accessibilityElement(children: activity.feature == .clockTimer ? .contain : .ignore)
-        .accessibilityLabel(activity.remainingSeconds.map { "Timer, \(ClockReading.formatted($0)), \(activity.isActive ? "running" : "paused")" } ?? (activity.feature == .microphoneMute ? "Microphone \(activity.isActive ? "unmuted" : "muted")" : activity.feature == .focus ? "\(activity.label) \(activity.isActive ? "on" : "off")" : activity.feature == .capsLock ? "Caps Lock active" : activity.feature == .airDrop ? "AirDrop received" : [.hotspot, .wifi, .bluetooth].contains(activity.feature) ? "\(activity.label) connected" : "\(activity.label), \(activity.value) percent\(activity.isBoosted ? ", Vivid extra brightness" : "")"))
+        .accessibilityLabel(activity.remainingSeconds.map { "Timer, \(ClockReading.formatted($0)), \(activity.isActive ? "running" : "paused")" } ?? (activity.feature == .microphoneMute ? "Microphone \(activity.isActive ? "unmuted" : "muted")" : [.internetOffline, .internetOnline].contains(activity.feature) ? activity.feature.title : activity.feature == .focus ? "\(activity.label) \(activity.isActive ? "on" : "off")" : activity.feature == .capsLock ? "Caps Lock active" : activity.feature == .airDrop ? "AirDrop received" : ([.hotspot, .wifi, .bluetooth].contains(activity.feature) || !activity.showsPercentage) ? "\(activity.label) connected" : "\(activity.label), \(activity.value) percent\(activity.isBoosted ? ", Vivid extra brightness" : "")"))
     }
     private var activityIcon: some View {
         Group {
             if activity.feature == .airDrop { AirDropGlyph().frame(width: 18, height: 18) }
+            else if activity.symbol == Feature.bluetooth.symbol { BluetoothGlyph().frame(width: 18, height: 18) }
             else { Image(systemName: activity.feature == .clockTimer ? (activity.isActive ? ((screenHovered ?? clockControlHovered) ? "pause.fill" : "timer") : "play.fill") : activity.symbol) }
         }
                         .font(.system(size: 14, weight: .semibold))
@@ -248,10 +258,12 @@ enum IslandLayout {
         !geometry.isNotched && activity.feature != .volume && activity.feature != .brightness && activity.feature != .capsLock && activity.feature != .clockTimer && activity.feature != .microphoneMute && activity.feature != .airDrop
     }
     static func widths(_ activity: Activity, geometry: IslandGeometry) -> (left: Double, right: Double) {
-        guard !geometry.isNotched else { return geometry.widths(for: activity.feature) }
+        guard !geometry.isNotched else {
+            return activity.feature == .airPods && !activity.showsPercentage ? (84, 84) : geometry.widths(for: activity.feature)
+        }
         let labelWidth = showsLabel(activity, geometry: geometry) ?
             ceil((activity.label as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium)]).width) + 6 : 0
-        return (18 + 22 + labelWidth + 8, [.hotspot, .wifi, .bluetooth, .clockTimer, .microphoneMute, .airDrop].contains(activity.feature) ? 84 : 68)
+        return (18 + 22 + labelWidth + 8, [.internetOffline, .internetOnline, .hotspot, .wifi, .bluetooth, .clockTimer, .microphoneMute, .airDrop].contains(activity.feature) || !activity.showsPercentage ? 84 : 68)
     }
 }
 

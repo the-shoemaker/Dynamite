@@ -1,7 +1,7 @@
 import Foundation
 
 public enum Feature: String, Codable, CaseIterable, Identifiable, Sendable {
-    case volume, microphoneMute, brightness, charging, powerDisconnected, chargeTarget, lowBattery, lowPowerMode, capsLock, hotspot, wifi, bluetooth, airPods, focus, clockTimer, airDrop
+    case volume, microphoneMute, brightness, charging, powerDisconnected, chargeTarget, lowBattery, lowPowerMode, capsLock, hotspot, wifi, internetOffline, internetOnline, bluetooth, airPods, focus, clockTimer, airDrop
     public var id: String { rawValue }
     public var defaultDuration: Double { self == .lowBattery ? 5 : 2 }
     public var title: String {
@@ -17,6 +17,8 @@ public enum Feature: String, Codable, CaseIterable, Identifiable, Sendable {
         case .capsLock: return "Caps Lock"
         case .hotspot: return "Hotspot connected"
         case .wifi: return "Wi-Fi connected"
+        case .internetOffline: return "Internet offline"
+        case .internetOnline: return "Internet online"
         case .bluetooth: return "Bluetooth connected"
         case .airPods: return "AirPods battery"
         case .focus: return "Focus"
@@ -37,7 +39,9 @@ public enum Feature: String, Codable, CaseIterable, Identifiable, Sendable {
         case .capsLock: return "capslock.fill"
         case .hotspot: return "personalhotspot"
         case .wifi: return "wifi"
-        case .bluetooth: return "antenna.radiowaves.left.and.right"
+        case .internetOffline: return "wifi.slash"
+        case .internetOnline: return "network"
+        case .bluetooth: return "bluetooth" // Rendered with the shared vector BluetoothGlyph.
         case .airPods: return "airpodspro"
         case .focus: return "moon.fill"
         case .clockTimer: return "timer"
@@ -76,13 +80,20 @@ public struct Preferences: Codable, Equatable {
     public var keepSettingsOnTop = true
     public var vividCompatibility = true
     public var smoothBrightness = true
+    public var keepOfflineVisible = false
+    public var internetProbeAddress = InternetProbeSettings.defaultAddress
     public init() {}
     private enum CodingKeys: String, CodingKey {
-        case features, chargeTarget, lowThreshold, placement, paused, showMenuBarIcon, keepSettingsOnTop, vividCompatibility, smoothBrightness
+        case features, chargeTarget, lowThreshold, placement, paused, showMenuBarIcon, keepSettingsOnTop, vividCompatibility, smoothBrightness, keepOfflineVisible, internetProbeAddress
     }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        features = try values.decodeIfPresent([Feature: FeaturePreference].self, forKey: .features) ?? [:]
+        // Unknown feature names from another app version must not discard every
+        // saved duration. Swift's enum-key dictionaries use an alternating array.
+        let stored = try values.decodeIfPresent([StoredFeatureKey: FeaturePreference].self, forKey: .features) ?? [:]
+        features = Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in
+            Feature(rawValue: key.rawValue).map { ($0, value) }
+        })
         chargeTarget = try values.decodeIfPresent(Int.self, forKey: .chargeTarget) ?? 80
         lowThreshold = try values.decodeIfPresent(Int.self, forKey: .lowThreshold) ?? 20
         placement = try values.decodeIfPresent(DisplayPlacement.self, forKey: .placement) ?? .pointer
@@ -91,18 +102,49 @@ public struct Preferences: Codable, Equatable {
         keepSettingsOnTop = try values.decodeIfPresent(Bool.self, forKey: .keepSettingsOnTop) ?? true
         vividCompatibility = try values.decodeIfPresent(Bool.self, forKey: .vividCompatibility) ?? true
         smoothBrightness = try values.decodeIfPresent(Bool.self, forKey: .smoothBrightness) ?? true
+        keepOfflineVisible = try values.decodeIfPresent(Bool.self, forKey: .keepOfflineVisible) ?? false
+        internetProbeAddress = try values.decodeIfPresent(String.self, forKey: .internetProbeAddress) ?? InternetProbeSettings.defaultAddress
     }
     public func preference(for feature: Feature) -> FeaturePreference {
-        features[feature] ?? FeaturePreference(enabled: feature != .lowBattery && feature != .focus, duration: feature.defaultDuration)
+        features[feature] ?? FeaturePreference(enabled: ![.lowBattery, .focus, .internetOffline, .internetOnline].contains(feature), duration: feature.defaultDuration)
     }
     public mutating func normalize() {
         chargeTarget = min(100, max(50, chargeTarget))
         lowThreshold = min(40, max(5, lowThreshold))
+        internetProbeAddress = InternetProbeSettings.normalizedAddress(internetProbeAddress) ?? InternetProbeSettings.defaultAddress
         for feature in Feature.allCases {
             var pref = preference(for: feature)
             pref.duration = ActivityDuration.validated(pref.duration)
             features[feature] = pref
         }
+    }
+    public static func mergingChanges(from baseline: Self, current: Self, saved: Self) -> Self {
+        var result = saved
+        for feature in Feature.allCases {
+            let old = baseline.preference(for: feature)
+            let new = current.preference(for: feature)
+            var stored = result.preference(for: feature)
+            if old.enabled != new.enabled { stored.enabled = new.enabled }
+            if old.duration != new.duration { stored.duration = new.duration }
+            result.features[feature] = stored
+        }
+        func merge<T: Equatable>(_ key: WritableKeyPath<Self, T>) {
+            if current[keyPath: key] != baseline[keyPath: key] { result[keyPath: key] = current[keyPath: key] }
+        }
+        merge(\.chargeTarget); merge(\.lowThreshold); merge(\.placement); merge(\.paused)
+        merge(\.showMenuBarIcon); merge(\.keepSettingsOnTop); merge(\.vividCompatibility)
+        merge(\.smoothBrightness); merge(\.keepOfflineVisible); merge(\.internetProbeAddress)
+        result.normalize()
+        return result
+    }
+}
+
+private struct StoredFeatureKey: Codable, Hashable {
+    let rawValue: String
+    init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    func encode(to encoder: Encoder) throws {
+        var value = encoder.singleValueContainer()
+        try value.encode(rawValue)
     }
 }
 
@@ -115,7 +157,9 @@ public struct Activity: Equatable {
     public let isActive: Bool
     public let remainingSeconds: Int?
     public let sourceDisplayID: UInt32?
-    public init(_ feature: Feature, value: Int, label: String? = nil, symbol: String? = nil, isBoosted: Bool = false, isActive: Bool = true, sourceDisplayID: UInt32? = nil, remainingSeconds: Int? = nil) {
+    public let isPersistentIndicator: Bool
+    public let showsPercentage: Bool
+    public init(_ feature: Feature, value: Int, label: String? = nil, symbol: String? = nil, isBoosted: Bool = false, isActive: Bool = true, sourceDisplayID: UInt32? = nil, remainingSeconds: Int? = nil, isPersistentIndicator: Bool = false, showsPercentage: Bool = true) {
         self.feature = feature
         self.value = max(0, min(100, value))
         self.label = label ?? feature.title
@@ -124,6 +168,8 @@ public struct Activity: Equatable {
         self.isActive = isActive
         self.sourceDisplayID = sourceDisplayID
         self.remainingSeconds = remainingSeconds.map { max(0, $0) }
+        self.isPersistentIndicator = isPersistentIndicator
+        self.showsPercentage = showsPercentage
     }
     public static func preview(_ feature: Feature, preferences: Preferences? = nil) -> Activity {
         switch feature {
@@ -140,6 +186,8 @@ public struct Activity: Equatable {
         case .capsLock: return Activity(feature, value: 0, label: "Caps Lock")
         case .hotspot: return Activity(feature, value: 0, label: "Hotspot")
         case .wifi: return Activity(feature, value: 0, label: "Wi-Fi")
+        case .internetOffline: return Activity(feature, value: 0, label: "Internet", isPersistentIndicator: preferences?.keepOfflineVisible == true)
+        case .internetOnline: return Activity(feature, value: 0, label: "Internet")
         case .bluetooth: return Activity(feature, value: 0, label: "Bluetooth")
         case .airPods: return Activity(feature, value: 75, label: "AirPods")
         case .focus: return Activity(feature, value: 0, label: "Focus")

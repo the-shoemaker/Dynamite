@@ -19,7 +19,7 @@ struct AboutView: View {
             }
             Section("Updates") {
                 LabeledContent("Release", value: updater.isConfigured ? "Signed updates" : "Local development build")
-                Text(updater.status).font(.caption).foregroundStyle(.secondary)
+                if !updater.status.isEmpty { Text(updater.status).font(.caption).foregroundStyle(.secondary) }
                 Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(updater.isConfigured && !updater.canCheck)
                 Toggle("Automatically check for updates", isOn: $updater.automaticallyChecks)
@@ -30,7 +30,7 @@ struct AboutView: View {
             }
             Section("Performance diagnostic") {
                 Text(diagnostic.status)
-                Text("Records CPU and memory once a minute for 12 hours. Sustained high usage captures up to three short stack samples. Files stay on this Mac; nothing is uploaded. Stack samples may include executable and library paths. Keeps the latest three tests.")
+                Text("Records CPU, memory and occasional stack samples for 12 hours. Files stay on this Mac.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     if diagnostic.active { Button("Stop test") { diagnostic.stop() } }
@@ -38,18 +38,17 @@ struct AboutView: View {
                     Button("Show diagnostic files") { diagnostic.showFiles() }.disabled(diagnostic.folder == nil)
                 }
             }
-            Section("Acknowledgements") {
+            Section {
                 Link("Sparkle · Native macOS updates", destination: URL(string: "https://sparkle-project.org")!)
                 Text("Sparkle is open-source software, distributed under the MIT license.")
                     .font(.caption).foregroundStyle(.secondary)
-            }
-            Section {
-                HStack(spacing: 16) {
-                    Text("Quit to stop all activities.").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Quit Dynamite", systemImage: "power") { NSApp.terminate(nil) }
-                        .controlSize(.regular)
-                }.padding(.vertical, 4)
+            } header: {
+                Text("Acknowledgements")
+            } footer: {
+                Button("Quit Dynamite", systemImage: "power") { NSApp.terminate(nil) }
+                    .font(.body).buttonStyle(.bordered).controlSize(.regular)
+                    .padding(.top, 8).padding(.leading, -10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }.formStyle(.grouped)
     }

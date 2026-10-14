@@ -238,7 +238,7 @@ struct BalancedLayoutTests {
         for feature in Feature.allCases {
             let sides = geometry.widths(for: feature)
             #expect(sides.left == sides.right)
-            #expect(geometry.expandedWidth(for: feature) == ([.hotspot, .wifi, .bluetooth, .clockTimer, .microphoneMute, .airDrop].contains(feature) ? 388 : 356))
+            #expect(geometry.expandedWidth(for: feature) == ([.internetOffline, .internetOnline, .hotspot, .wifi, .bluetooth, .clockTimer, .microphoneMute, .airDrop].contains(feature) ? 388 : 356))
         }
     }
 }
@@ -337,8 +337,8 @@ struct WirelessAndHitRegionTests {
         #expect(state.consume(connection: .offline) == nil)
         #expect(state.consume(connection: .wifi)?.feature == .wifi)
         #expect(state.consume(connection: .wifi) == nil)
-        #expect(state.consume(connection: .hotspot)?.feature == .hotspot)
-        #expect(state.consume(connection: .wifi)?.feature == .wifi)
+        #expect(state.consume(connection: .hotspot, now: ProcessInfo.processInfo.systemUptime + 5)?.feature == .hotspot)
+        #expect(state.consume(connection: .wifi, now: ProcessInfo.processInfo.systemUptime + 10)?.feature == .wifi)
         #expect(state.consume(connection: .offline) == nil)
     }
     @Test func notchMenuIncludesTheExactTopScreenEdge() {

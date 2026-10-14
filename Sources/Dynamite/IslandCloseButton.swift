@@ -41,3 +41,23 @@ struct AirDropGlyph: View {
         }.accessibilityLabel("AirDrop")
     }
 }
+
+/// The Bluetooth rune is not available as an SF Symbol on every supported macOS.
+struct BluetoothGlyph: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let size = min(proxy.size.width, proxy.size.height)
+            let origin = CGPoint(x: (proxy.size.width - size) / 2, y: (proxy.size.height - size) / 2)
+            Path { path in
+                func point(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: origin.x + size * x, y: origin.y + size * y) }
+                path.move(to: point(0.48, 0.06))
+                path.addLine(to: point(0.48, 0.94))
+                path.addLine(to: point(0.80, 0.70))
+                path.addLine(to: point(0.16, 0.30))
+                path.move(to: point(0.48, 0.06))
+                path.addLine(to: point(0.80, 0.30))
+                path.addLine(to: point(0.16, 0.70))
+            }.stroke(style: StrokeStyle(lineWidth: size * 0.105, lineCap: .round, lineJoin: .round))
+        }.accessibilityLabel("Bluetooth")
+    }
+}

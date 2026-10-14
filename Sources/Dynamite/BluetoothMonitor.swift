@@ -17,6 +17,7 @@ final class BluetoothMonitor: NSObject, ObservableObject {
     private var refreshingDevices = false
     private var devicesRefreshPending = false
     var onConnect: ((Activity) -> Void)?
+    var onUpdate: ((Activity) -> Void)?
     var onAirPodsReady: (() -> Void)?
     var airPodsEnabled = false
     private var notification: IOBluetoothUserNotification?
@@ -89,7 +90,7 @@ final class BluetoothMonitor: NSObject, ObservableObject {
                     guard let id = device.addressString else { return nil }
                     let battery = AirPodsBattery.read(device)
                     let name = (device.name ?? "Bluetooth device").split(whereSeparator: { $0.isNewline }).joined(separator: " ")
-                    let symbol = battery?.symbol ?? (device.deviceClassMajor == 4 ? "headphones" : device.deviceClassMajor == 5 ? "keyboard" : "antenna.radiowaves.left.and.right")
+                    let symbol = battery?.symbol ?? (device.deviceClassMajor == 4 ? "headphones" : device.deviceClassMajor == 5 ? "keyboard" : Feature.bluetooth.symbol)
                     return ConnectedDevice(id: id, name: name, symbol: symbol, battery: battery)
                 }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             DispatchQueue.main.async { [weak self] in
@@ -114,8 +115,8 @@ final class BluetoothMonitor: NSObject, ObservableObject {
                 let name = rawName.split(whereSeparator: { $0.isNewline }).joined(separator: " ")
                 let label = name.count > 18 ? String(name.prefix(17)) + "…" : name
                 let major = device.deviceClassMajor
-                let isAirPods = AirPodsBattery.symbol(for: device) != nil
-                let symbol = major == 4 ? "headphones" : major == 5 ? "keyboard" : "antenna.radiowaves.left.and.right"
+                let airPodsSymbol = AirPodsBattery.symbol(for: device)
+                let symbol = major == 4 ? "headphones" : major == 5 ? "keyboard" : Feature.bluetooth.symbol
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.running, self.generation == token, self.disconnects[identifier] == nil else { return }
                     // Remove the identity on disconnection so a later reconnection can announce once.
@@ -126,18 +127,19 @@ final class BluetoothMonitor: NSObject, ObservableObject {
                     self.disconnects[identifier] = observer
                     self.refreshDevices()
                     if self.airPodsEnabled {
-                        if isAirPods { self.onAirPodsReady?() }
+                        if airPodsSymbol != nil { self.onAirPodsReady?() }
                         self.readBattery(device, identifier: identifier, label: label, fallbackSymbol: symbol,
-                                         token: token, attempt: 0, deviceName: rawName)
+                                         token: token, attempt: 0, deviceName: rawName, verifiedSymbol: airPodsSymbol)
                     } else {
-                        self.onConnect?(Activity(.bluetooth, value: 0, label: label, symbol: symbol))
+                        self.onConnect?(BluetoothConnectionActivity.make(isAirPods: airPodsSymbol != nil,
+                            airPodsEnabled: self.airPodsEnabled, label: label, symbol: symbol, batteryPercentage: nil))
                     }
                 }
             }
         }
     }
     private func readBattery(_ device: IOBluetoothDevice, identifier: String, label: String,
-                             fallbackSymbol: String, token: UUID, attempt: Int, deviceName: String) {
+                             fallbackSymbol: String, token: UUID, attempt: Int, deviceName: String, verifiedSymbol: String?) {
         let observer = disconnects[identifier]
         reads.asyncAfter(deadline: .now() + (attempt == 0 ? 0.25 : 0.8)) { [weak self] in
             guard device.isConnected() else { return }
@@ -148,11 +150,17 @@ final class BluetoothMonitor: NSObject, ObservableObject {
                 if let observer, self.disconnects[identifier] !== observer { return }
                 if self.airPodsEnabled, let reading, let percent = reading.percentage {
                     self.announceAirPods(identifier: identifier, name: deviceName, reading: reading, percent: percent)
-                } else if self.airPodsEnabled && (reading != nil || audioDevice) && attempt < 3 {
+                } else if self.airPodsEnabled && (reading != nil || verifiedSymbol != nil || audioDevice) && attempt < 3 {
                     self.readBattery(device, identifier: identifier, label: label, fallbackSymbol: fallbackSymbol,
-                                     token: token, attempt: attempt + 1, deviceName: deviceName)
+                                     token: token, attempt: attempt + 1, deviceName: deviceName, verifiedSymbol: reading?.symbol ?? verifiedSymbol)
+                } else if self.airPodsEnabled, let symbol = reading?.symbol ?? verifiedSymbol {
+                    // Missing battery data must not first play Bluetooth and then
+                    // AirPods when the output route/battery eventually settles.
+                    let unavailable = reading ?? AirPodsBattery.Reading(symbol: symbol, percentage: nil, left: nil, right: nil, caseLevel: nil)
+                    self.announceAirPods(identifier: identifier, name: deviceName, reading: unavailable, percent: nil)
                 } else {
-                    self.onConnect?(Activity(.bluetooth, value: 0, label: label, symbol: fallbackSymbol))
+                    self.onConnect?(BluetoothConnectionActivity.make(isAirPods: reading?.symbol != nil || verifiedSymbol != nil,
+                        airPodsEnabled: self.airPodsEnabled, label: label, symbol: fallbackSymbol, batteryPercentage: nil))
                 }
             }
         }
@@ -205,25 +213,30 @@ final class BluetoothMonitor: NSObject, ObservableObject {
             return output.contains(address.filter { $0.isLetter || $0.isNumber }.lowercased())
         }), let identifier = device.addressString else { return }
         let name = device.name ?? "AirPods"
-        let isAirPods = AirPodsBattery.symbol(for: device) != nil
+        guard let airPodsSymbol = AirPodsBattery.symbol(for: device) else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.running, self.generation == token, self.airPodsEnabled else { return }
-            if isAirPods { self.onAirPodsReady?() }
+            self.onAirPodsReady?()
             self.readBattery(device, identifier: identifier, label: "AirPods", fallbackSymbol: "headphones",
-                token: token, attempt: 0, deviceName: name)
+                token: token, attempt: 0, deviceName: name, verifiedSymbol: airPodsSymbol)
         }
     }
-    private func announceAirPods(identifier: String, name: String, reading: AirPodsBattery.Reading, percent: Int) {
+    private func announceAirPods(identifier: String, name: String, reading: AirPodsBattery.Reading, percent: Int?) {
         if let index = devices.firstIndex(where: { $0.id == identifier }) {
             devices[index] = ConnectedDevice(id: identifier, name: name, symbol: reading.symbol, battery: reading)
         } else {
             devices.append(ConnectedDevice(id: identifier, name: name, symbol: reading.symbol, battery: reading))
         }
         let now = ProcessInfo.processInfo.systemUptime
-        if let previous = lastAnnouncement, previous.0 == identifier, now - previous.1 < 4 { return }
+        let activity = BluetoothConnectionActivity.make(isAirPods: true, airPodsEnabled: true,
+            label: "AirPods", symbol: reading.symbol, batteryPercentage: percent)
+        if let previous = lastAnnouncement, previous.0 == identifier, now - previous.1 < 4 {
+            onUpdate?(activity)
+            return
+        }
         lastAnnouncement = (identifier, now)
-        status = "AirPods connected · \(percent)%"
-        onConnect?(Activity(.airPods, value: percent, label: "AirPods", symbol: reading.symbol))
+        status = "AirPods connected" + (percent.map { " · \($0)%" } ?? "")
+        onConnect?(activity)
         onAirPodsReady?()
     }
     @objc private func disconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {

@@ -18,6 +18,7 @@ Built with SwiftUI and AppKit, with a floating pill for displays without a notch
 - Focus changes, Bluetooth connections and real AirPods battery readings when available.
 - Clock countdowns with pause/resume and expanded Repeat/Stop controls when a timer finishes.
 - Completed AirDrop receipts with Open and Show in Finder.
+- Independent internet offline/online alerts, with an optional persistent offline indicator. Brief alerts replace the top status, then restore it. Additional long-running activities use lower pills.
 - Adjustable durations from half a second to an hour, display previews, optional login startup and independent activity switches.
 
 Dynamite hides recognized native popups when its replacement is available. Some integrations depend on private macOS interfaces, so replacement is not guaranteed on every system. AirDrop requests and transfer progress still use Apple's UI.
@@ -64,6 +65,8 @@ For a useful bug report, include your macOS version, Mac model, display setup, t
 
 Activities are grouped into collapsible sections. Macs without an internal battery hide battery activities and their previews; AirPods battery feedback remains available.
 
+Internet offline and Internet online are separate, optional switches in Activities. Offline is red for the selected duration, or purple with Keep visible while offline. Either indication clears when the connection changes, even if its duration has not expired. The shared ping target defaults to Quad9's `9.9.9.9` and has Apply and Reset controls. The IPv4 address must respond to ICMP ping; a blocked or unreachable target can appear offline even if other internet services work. Wi-Fi and Hotspot confirmations describe the link and take precedence over a duplicate online confirmation during reconnect.
+
 ## Resource use
 
 Dynamite is designed for low idle overhead. It uses native windows and event-driven observers where possible, with no web runtime. Animations and active integrations still consume CPU. Earlier local measurements are documented in [performance notes](docs/performance-2026-09-20.md); they are not a battery-life guarantee or a measurement of every Mac and workload.
@@ -90,6 +93,8 @@ Use macOS with Xcode or compatible Command Line Tools installed.
 ```
 
 The app is written to `build/Dynamite.app`. Local builds without release configuration do not contact an update feed. `scripts/setup-signing.sh` can create a stable local development identity so rebuilding is less disruptive to Accessibility permissions. Never publish its private keychain or password.
+
+Builds and tests share one SDK module cache and skip source indexing. The packaged executable has debug records and local symbols stripped; the SwiftPM executable keeps them for debugging. Run `./scripts/clean-build.sh` to reclaim compiler caches and intermediates while keeping downloaded dependencies and the packaged app. The next build will take longer.
 
 The showcase images use the actual SwiftUI views with inert sample providers. Regenerate them with `./scripts/render-showcase.sh`; this does not start integrations or change the installed app.
 

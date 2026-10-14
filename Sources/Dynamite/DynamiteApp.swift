@@ -11,7 +11,7 @@ struct DynamiteApp: App {
         Settings { EmptyView() }
             .commands {
                 CommandGroup(replacing: .appSettings) {
-                    Button("Settings…") { delegate.showSettings() }
+                    Button("Settings") { delegate.showSettings() }
                         .keyboardShortcut(",", modifiers: .command)
                 }
             }
@@ -76,7 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateMenuVisibility(model.settings.preferences.showMenuBarIcon)
         preferencesSubscription = model.settings.$preferences.sink { [weak self] preferences in
             self?.updateMenuVisibility(preferences.showMenuBarIcon)
-            self?.settingsWindow?.level = preferences.keepSettingsOnTop ? .floating : .normal
+            let level: NSWindow.Level = preferences.keepSettingsOnTop ? .floating : .normal
+            if self?.settingsWindow?.level != level { self?.settingsWindow?.level = level }
         }
         notchMenu.makeMenu = { [weak self] in self?.makeMenu() ?? NSMenu() }
         notchMenu.activityContains = { [weak self] point in self?.model.island.containsActivity(at: point) ?? false }
@@ -135,7 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Dynamite settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "Dynamite settings", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Check for updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Preview island", action: #selector(preview), keyEquivalent: "").target = self
         menu.addItem(.separator())
@@ -157,15 +158,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc func showSetup() {
         if setupWindow == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 580),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 440),
                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.title = "Permission setup"
             window.level = .floating
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.contentView = NSHostingView(rootView: SetupView(loginItem: model.loginItem) { [weak self] in
+            let hostingView = NSHostingView(rootView: SetupView(loginItem: model.loginItem) { [weak self] in
                 self?.finishSetup()
             })
+            hostingView.sizingOptions = [.minSize, .intrinsicContentSize]
+            window.contentView = hostingView
+            window.setContentSize(hostingView.fittingSize)
             window.center()
             setupWindow = window
         }

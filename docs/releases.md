@@ -10,7 +10,7 @@ The public feed URL, verification key and versions live in `scripts/release-conf
 source scripts/release-config.sh
 ./scripts/test.sh
 ./scripts/build.sh
-./scripts/prepare-update.sh --unnotarized-beta build/Dynamite.app releases/0.1.3-beta.1/ https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.3-beta.1/
+./scripts/prepare-update.sh --unnotarized-beta build/Dynamite.app releases/0.1.4-beta.1-build7/ https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.4-beta.1/
 ```
 
 The packaging script verifies the app's code signature, preserves framework symlinks with `ditto`, and signs the archive and appcast using Sparkle's `dynamite-updates` Keychain account. It does not upload anything. Without `--unnotarized-beta`, it also requires Gatekeeper acceptance.

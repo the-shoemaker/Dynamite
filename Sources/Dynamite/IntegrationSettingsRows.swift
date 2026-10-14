@@ -6,7 +6,7 @@ struct PermissionRow: View {
     let detail: String
     let status: String
     let granted: Bool
-    var actionTitle: String = "Settings…"
+    var actionTitle: String = "Settings"
     let action: () -> Void
     var body: some View {
         HStack(spacing: 12) {
@@ -16,9 +16,11 @@ struct PermissionRow: View {
                 Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
-            VStack(alignment: .trailing, spacing: 5) {
-                Label(status, systemImage: granted ? "checkmark.circle.fill" : "circle.dashed")
-                    .font(.caption).foregroundStyle(granted ? Color.green : .secondary)
+            VStack(alignment: .trailing, spacing: 9) {
+                HStack(spacing: 5) {
+                    Image(systemName: granted ? "checkmark.circle.fill" : "circle.dashed")
+                    Text(status)
+                }.font(.caption).foregroundStyle(granted ? Color.green : .secondary)
                 Button(actionTitle, action: action).controlSize(.small)
                     .accessibilityLabel("\(title) settings")
             }.fixedSize()
@@ -52,7 +54,10 @@ struct ConnectedDeviceRow: View {
     let device: BluetoothMonitor.ConnectedDevice
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: device.symbol).font(.system(size: 24)).foregroundStyle(.primary).frame(width: 34)
+            Group {
+                if device.symbol == "bluetooth" { BluetoothGlyph().frame(width: 24, height: 24) }
+                else { Image(systemName: device.symbol).font(.system(size: 24)) }
+            }.foregroundStyle(.primary).frame(width: 34)
             VStack(alignment: .leading, spacing: 5) {
                 Text(device.name).lineLimit(1)
                 if let battery = device.battery, battery.left != nil || battery.right != nil || battery.caseLevel != nil {
