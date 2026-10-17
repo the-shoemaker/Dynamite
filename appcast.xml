@@ -1,27 +1,39 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
 --><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
-    <channel>
-        <title>Dynamite</title>
-        <item>
-            <title>0.1.4</title>
-            <pubDate>Wed, 14 Oct 2026 05:19:26 +0200</pubDate>
-            <sparkle:version>7</sparkle:version>
-            <sparkle:shortVersionString>0.1.4</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.4-beta.1/Dynamite-7.zip" length="2743122" type="application/octet-stream" sparkle:edSignature="IjxZOE0zfM4vf8cP4sT1TL6+bbviCcD05hFYO3wCCuptvT3Oj6QErBdX7Q4LkKcRhG2deIWdaWIyzEaLS3XlDQ=="></enclosure>
-        <description>&lt;p&gt;Internet status alerts, smoother activity replacement, preserved settings, and a cleaner interface.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Separate offline and online alerts, with an optional always-visible offline status.&lt;/li&gt;&lt;li&gt;Brief alerts replace the top status; long-running activities can use lower pills.&lt;/li&gt;&lt;li&gt;A proper Bluetooth icon and one AirPods connection alert.&lt;/li&gt;&lt;li&gt;Smaller app and fewer unnecessary network checks during connection changes.&lt;/li&gt;&lt;/ul&gt;</description></item>
+  <channel>
+    <title>Dynamite</title>
     <item>
-            <title>0.1.3</title>
-            <pubDate>Fri, 02 Oct 2026 14:28:41 +0200</pubDate>
-            <sparkle:version>5</sparkle:version>
-            <sparkle:shortVersionString>0.1.3</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements><enclosure url="https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.3-beta.1/Dynamite-5.zip" length="2940432" type="application/octet-stream" sparkle:edSignature="Gs87eFb/AsefOzdS9bBno9c+oRfdyu/HeSsVs2EVaGUJSLTSuCOFYlWZgY4kLjcqpoCAiD/iO+/OppugUQJ5AQ=="></enclosure>
-        </item>
-    </channel>
+      <title>1.0.0</title>
+      <pubDate>Sat, 17 Oct 2026 19:18:09 +0200</pubDate>
+      <sparkle:version>9</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+      <description>&lt;p&gt;Dynamite 1.0 is the first stable public release.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Caps Lock interrupts the offline indicator for its configured duration, then offline returns.&lt;/li&gt;&lt;li&gt;A taller menu bar icon with a larger, evenly inset cutout.&lt;/li&gt;&lt;li&gt;Timer menu actions stay tied to the displayed timer and appear only for available controls.&lt;/li&gt;&lt;li&gt;Fixes for rapid media-key input, alerts after sleep, and external brightness changes.&lt;/li&gt;&lt;li&gt;Additional simultaneous finished timers retain native controls.&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;Apple Silicon. Locally signed, not Apple-notarized; first launch may require Open Anyway.&lt;/p&gt;</description>
+      <enclosure url="https://github.com/the-shoemaker/Dynamite/releases/download/v1.0.0/Dynamite-9.zip" length="2753566" type="application/octet-stream" sparkle:edSignature="2/DCc/kZKZIFYPXdxETdyszK8w0ikHVjUdLWvIKfcNsUSLi7IFYDiw+9vmJ+Tz+ucKP9h7PSztqrkI5SJtXUDQ=="></enclosure>
+    </item>
+    <item>
+      <title>0.1.4</title>
+      <pubDate>Wed, 14 Oct 2026 05:19:26 +0200</pubDate>
+      <sparkle:version>7</sparkle:version>
+      <sparkle:shortVersionString>0.1.4</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+      <enclosure url="https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.4-beta.1/Dynamite-7.zip" length="2743122" type="application/octet-stream" sparkle:edSignature="IjxZOE0zfM4vf8cP4sT1TL6+bbviCcD05hFYO3wCCuptvT3Oj6QErBdX7Q4LkKcRhG2deIWdaWIyzEaLS3XlDQ=="></enclosure>
+      <description>&lt;p&gt;Internet status alerts, smoother activity replacement, preserved settings, and a cleaner interface.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Separate offline and online alerts, with an optional always-visible offline status.&lt;/li&gt;&lt;li&gt;Brief alerts replace the top status; long-running activities can use lower pills.&lt;/li&gt;&lt;li&gt;A proper Bluetooth icon and one AirPods connection alert.&lt;/li&gt;&lt;li&gt;Smaller app and fewer unnecessary network checks during connection changes.&lt;/li&gt;&lt;/ul&gt;</description>
+    </item>
+    <item>
+      <title>0.1.3</title>
+      <pubDate>Fri, 02 Oct 2026 14:28:41 +0200</pubDate>
+      <sparkle:version>5</sparkle:version>
+      <sparkle:shortVersionString>0.1.3</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+      <enclosure url="https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.3-beta.1/Dynamite-5.zip" length="2940432" type="application/octet-stream" sparkle:edSignature="Gs87eFb/AsefOzdS9bBno9c+oRfdyu/HeSsVs2EVaGUJSLTSuCOFYlWZgY4kLjcqpoCAiD/iO+/OppugUQJ5AQ=="></enclosure>
+    </item>
+  </channel>
 </rss><!-- sparkle-signatures:
-edSignature: KsI9FAlF1Kx1mQ7iqRqceVBDXpT+DhNE4jpfDNTgt0BHYex2GPrAGsWPTL49VvJPXnH4DFiYxoy92PupxI4gDw==
-length: 2373
+edSignature: gSOZ1a9rHeemjpNLUoEtaf9JLHyDGhYwL+ZpufJwnTQWux301EEYu8tfvnf/s/XoRpWCYyQLuoTyabpHfEUvDw==
+length: 3656
 -->
