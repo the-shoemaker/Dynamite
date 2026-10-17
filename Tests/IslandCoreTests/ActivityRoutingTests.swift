@@ -3,6 +3,28 @@ import Testing
 @testable import IslandCore
 
 struct ActivityRoutingTests {
+    @Test func capsLockInterruptsOfflineForItsDurationAndRestoresTheStack() {
+        var schedule = ActivitySchedule()
+        schedule.setPersistents([.preview(.internetOffline), .preview(.clockTimer)])
+        func rows() -> [ActivityRouting.Row] {
+            var requests = schedule.persistents.map { ActivityRouting.Request($0.feature, screens: [1]) }
+            if let temporary = schedule.temporary {
+                requests.append(.init(temporary.feature, screens: [1], source: .temporary))
+            }
+            return ActivityRouting.stacks(requests)
+        }
+        let original = rows()
+        schedule.present(.preview(.capsLock), duration: 4, now: 10)
+        #expect(rows().map(\.feature) == [.capsLock, .clockTimer])
+        #expect(rows()[0].slot == original[0].slot)
+        #expect(rows()[1] == original[1])
+        // A network refresh must not hide Caps Lock or reset its deadline.
+        schedule.setPersistents([.preview(.internetOffline), .preview(.clockTimer)])
+        schedule.expire(at: 13.99)
+        #expect(rows().first?.feature == .capsLock)
+        schedule.expire(at: 14)
+        #expect(rows() == original)
+    }
     @Test func briefActionsReplaceTheTopStatusOnTheirTargetDisplays() {
         let rows = ActivityRouting.stacks([
             .init(.internetOffline, screens: [1]), .init(.clockTimer, screens: [1]),

@@ -11,7 +11,11 @@ final class ClockMonitor: ObservableObject {
     @Published private(set) var finishedDuration: Int?
     var onChange: ((ClockReading?) -> Void)?
     private let queue = DispatchQueue(label: "com.dan.dynomite.clock", qos: .utility)
-    private lazy var store = ClockTimerStore(queue: queue)
+    private let timerStoreURL: URL?
+    private lazy var store: ClockTimerStore = {
+        if let timerStoreURL { return ClockTimerStore(queue: queue, url: timerStoreURL) }
+        return ClockTimerStore(queue: queue)
+    }()
     private var running = false
     private var processID: pid_t?
     private var timer: DispatchSourceTimer?
@@ -36,6 +40,21 @@ final class ClockMonitor: ObservableObject {
     private var cachedNodes: TimerNodes?
     private var cachedStart: AXUIElement?
     private var clockForeground = false
+
+    init(timerStoreURL: URL? = nil) { self.timerStoreURL = timerStoreURL }
+
+    /// A mirrored countdown alone cannot supply menu actions. Inspect the open
+    /// window once on demand, keeping Accessibility work off the main thread.
+    func menuReading(completion: @escaping (ClockReading?) -> Void) {
+        let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.clock").first?.processIdentifier
+        queue.async { [weak self] in
+            var result: ClockReading?
+            if let self, self.running, let pid, self.processID == pid, AXIsProcessTrusted() {
+                result = self.controllableTimer(pid, identifier: self.last?.identifier)?.reading
+            }
+            RunLoop.main.perform(inModes: [.common]) { [result] in completion(result) }
+        }
+    }
 
     func start() {
         guard workspaceObservers.isEmpty else { return }
@@ -226,6 +245,27 @@ final class ClockMonitor: ObservableObject {
         perform(cancel: false)
     }
     func cancel() { perform(cancel: true) }
+    func togglePauseFromMenu() { performFromMenu(cancel: false) }
+    func cancelFromMenu() { performFromMenu(cancel: true) }
+    private func performFromMenu(cancel: Bool) {
+        queue.async { [weak self] in
+            guard let self, self.running, let pid = self.processID,
+                  let current = self.controllableTimer(pid, identifier: self.last?.identifier) else { return }
+            AXUIElementPerformAction(cancel ? current.cancel : current.pause, kAXPressAction as CFString)
+            self.requestRead(refreshPreferences: true)
+        }
+    }
+    private func controllableTimer(_ pid: pid_t, identifier: String?) -> (reading: ClockReading, pause: AXUIElement, cancel: AXUIElement)? {
+        // Bypass cached elements so closed windows and replaced controls cannot
+        // make the menu appear actionable. Menu actions never reopen Clock.
+        cachedNodes = nil; cachedStart = nil
+        let current = sample(pid)
+        guard let reading = current.reading, reading.identifier == identifier,
+              let pause = current.pause, let cancel = current.cancel,
+              (attribute(pause, kAXEnabledAttribute) as Bool?) == true,
+              (attribute(cancel, kAXEnabledAttribute) as Bool?) == true else { return nil }
+        return (reading, pause, cancel)
+    }
     private func perform(cancel: Bool) {
         queue.async { [weak self] in
             guard let self, self.running, let last = self.last else { return }

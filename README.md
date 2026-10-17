@@ -92,7 +92,7 @@ Use macOS with Xcode or compatible Command Line Tools installed.
 ./scripts/build.sh
 ```
 
-The app is written to `build/Dynamite.app`. Local builds without release configuration do not contact an update feed. `scripts/setup-signing.sh` can create a stable local development identity so rebuilding is less disruptive to Accessibility permissions. Never publish its private keychain or password.
+The build script installs Dynamite in `/Applications/Dynamite.app` and keeps a packaged copy in `build/Dynamite.app`. Use `./scripts/build.sh --no-install` to build only. Local builds without release configuration do not contact an update feed. `scripts/setup-signing.sh` can create a stable local development identity so rebuilding is less disruptive to Accessibility permissions. Never publish its private keychain or password.
 
 Builds and tests share one SDK module cache and skip source indexing. The packaged executable has debug records and local symbols stripped; the SwiftPM executable keeps them for debugging. Run `./scripts/clean-build.sh` to reclaim compiler caches and intermediates while keeping downloaded dependencies and the packaged app. The next build will take longer.
 

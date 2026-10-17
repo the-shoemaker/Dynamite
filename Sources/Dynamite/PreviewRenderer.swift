@@ -141,6 +141,17 @@ enum PreviewRenderer {
                   "Offline restores in the same primary window")
             check(coordinator.panelNumbers[.clockTimer] == timerPanels,
                   "Timer stays in its lower window after expiry")
+            coordinator.show(.preview(.capsLock), duration: 0.3, placement: .all)
+            check(coordinator.panelFrames[.internetOffline] == nil &&
+                  coordinator.panelNumbers[.capsLock]?.contains(where: { primaryPanels.contains($0) }) == true,
+                  "Caps Lock interrupts offline in the primary window")
+            check(coordinator.panelNumbers[.clockTimer] == timerPanels,
+                  "Caps Lock leaves the lower timer untouched")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.7) {
+            check(coordinator.panelFrames[.capsLock] == nil &&
+                  coordinator.panelNumbers[.internetOffline] == primaryPanels,
+                  "Offline returns when the Caps Lock interruption expires")
             coordinator.setPersistents([.preview(.clockTimer)])
             check(coordinator.panelNumbers[.clockTimer] == timerPanels,
                   "Reconnect promotes the existing timer window to primary")

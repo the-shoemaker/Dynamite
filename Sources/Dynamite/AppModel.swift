@@ -112,7 +112,7 @@ final class AppModel: ObservableObject {
             self.updateCapsLock()
         }
         capsLock.onUserToggle = { [weak self] active in
-            guard let self, active, self.schedule.persistents.contains(where: { $0.feature == .clockTimer }) else { return }
+            guard let self, active, self.schedule.persistents.contains(where: { $0.feature != .capsLock }) else { return }
             self.show(.preview(.capsLock))
         }
         mediaKeys.handle = { [weak self] key, fine, completion in

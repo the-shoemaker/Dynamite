@@ -9,8 +9,8 @@ The public feed URL, verification key and versions live in `scripts/release-conf
 ```sh
 source scripts/release-config.sh
 ./scripts/test.sh
-./scripts/build.sh
-./scripts/prepare-update.sh --unnotarized-beta build/Dynamite.app releases/0.1.4-beta.1-build7/ https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.4-beta.1/
+./scripts/build.sh --no-install
+./scripts/prepare-update.sh --unnotarized-beta build/Dynamite.app releases/0.1.5-beta.1-build8/ https://github.com/the-shoemaker/Dynamite/releases/download/v0.1.5-beta.1/
 ```
 
 The packaging script verifies the app's code signature, preserves framework symlinks with `ditto`, and signs the archive and appcast using Sparkle's `dynamite-updates` Keychain account. It does not upload anything. Without `--unnotarized-beta`, it also requires Gatekeeper acceptance.
@@ -40,3 +40,9 @@ The first public beta is the starting point for future updates. Before shipping 
 For a notarized release, sign with Developer ID Application and the required hardened-runtime configuration, submit with `notarytool`, staple the accepted ticket, and assess with Gatekeeper before archiving. Revalidate private integrations under that configuration.
 
 References: [Sparkle publishing](https://sparkle-project.org/documentation/publishing/), [Apple Developer ID](https://developer.apple.com/developer-id/), [Apple Open Anyway instructions](https://support.apple.com/102445).
+
+## 0.1.5 build 8 verification
+
+The 99 Swift tests, six updater configuration tests, native lifecycle checks, and settings persistence checks passed. The final signed app's routing check verified that Caps Lock replaces offline in the primary panel, offline returns after expiry, and a lower timer keeps its window. The isolated Clock mirror check verified that closed Clock controls produce no timer menu actions and menu actions do not reopen Clock or edit its mirror.
+
+The archive was extracted and its code signature verified. The designated app-signing requirement, update public key and feed URL match build 7. The archive and merged feed passed Sparkle signature verification. The updater implementation is unchanged from the actual cancellation, install and relaunch verification recorded for 0.1.4; that interactive upgrade was not repeated for this release. Fresh-Mac Gatekeeper testing remains outstanding for this unnotarized beta.

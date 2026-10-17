@@ -32,3 +32,4 @@ python3 scripts/test-update-config.py
 ./scripts/verify-diagnostic.sh
 ./scripts/verify-internet-lifecycle.sh
 ./scripts/verify-settings-persistence.sh
+./scripts/verify-clock-menu.sh

@@ -9,8 +9,9 @@ final class NotchMenuMonitor {
     private var trackingMenu = false
     private var activeMenu: NSMenu?
     private var suppressNextRelease = false
+    private var generation = UUID()
     var activityContains: ((NSPoint) -> Bool)?
-    var makeMenu: (() -> NSMenu)?
+    var makeMenu: ((@escaping (NSMenu) -> Void) -> Void)?
 
     func start() {
         guard tap == nil, globalMonitor == nil, localMonitor == nil else { return }
@@ -54,6 +55,13 @@ final class NotchMenuMonitor {
             return
         }
         guard trackingMenu || wasTracking else { return }
+        if trackingMenu && activeMenu == nil {
+            // A click elsewhere cancels a menu whose control check is pending.
+            generation = UUID()
+            trackingMenu = false
+            if type == .rightMouseDown { suppressNextRelease = true }
+            return
+        }
         // Preserve normal left-click selection inside AppKit's menu windows.
         let insideMenu = NSApp.windows.contains {
             $0.isVisible && $0.level == .popUpMenu && $0.frame.contains(point)
@@ -72,15 +80,21 @@ final class NotchMenuMonitor {
             let geometry = IslandController.geometry(for: screen)
             return geometry.menuRegion(in: screen.frame)?.contains(point) == true
         } ?? false
-        guard atCamera || activityContains?(point) == true, let menu = makeMenu?() else { return }
+        guard atCamera || activityContains?(point) == true, let makeMenu else { return }
         let ceiling = screen.map { $0.frame.maxY - $0.safeAreaInsets.top - 3 } ?? point.y
         trackingMenu = true
-        activeMenu = menu
-        menu.popUp(positioning: nil, at: NSPoint(x: point.x, y: min(point.y, ceiling)), in: nil)
-        trackingMenu = false
-        activeMenu = nil
+        let token = generation
+        makeMenu { [weak self] menu in
+            guard let self, self.generation == token, self.trackingMenu else { return }
+            self.activeMenu = menu
+            menu.popUp(positioning: nil, at: NSPoint(x: point.x, y: min(point.y, ceiling)), in: nil)
+            self.trackingMenu = false
+            self.activeMenu = nil
+        }
     }
     func stop() {
+        generation = UUID()
+        trackingMenu = false
         activeMenu?.cancelTracking()
         activeMenu = nil
         if let tap { CFMachPortInvalidate(tap) }

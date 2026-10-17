@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var setupWindow: NSWindow?
     private var preferencesSubscription: AnyCancellable?
+    private var statusMenuPending = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -79,7 +80,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let level: NSWindow.Level = preferences.keepSettingsOnTop ? .floating : .normal
             if self?.settingsWindow?.level != level { self?.settingsWindow?.level = level }
         }
-        notchMenu.makeMenu = { [weak self] in self?.makeMenu() ?? NSMenu() }
+        notchMenu.makeMenu = { [weak self] completion in
+            guard let self else { completion(NSMenu()); return }
+            self.prepareMenu(completion: completion)
+        }
         notchMenu.activityContains = { [weak self] point in self?.model.island.containsActivity(at: point) ?? false }
         notchMenu.start()
         if !UserDefaults.standard.bool(forKey: "hasLaunched") {
@@ -123,18 +127,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private func setupMenu() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem?.button?.image = NSImage(systemSymbolName: "capsule.fill", accessibilityDescription: "Dynamite")
+        statusItem?.button?.image = MenuBarIcon.make()
         statusItem?.button?.image?.isTemplate = true
         statusItem?.button?.target = self
         statusItem?.button?.action = #selector(statusMenuClicked(_:))
         statusItem?.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
     @objc private func statusMenuClicked(_ sender: NSStatusBarButton) {
-        sender.highlight(true)
-        defer { sender.highlight(false) }
-        makeMenu().popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY - 2), in: sender)
+        guard !statusMenuPending else { return }
+        statusMenuPending = true
+        prepareMenu { [weak self, weak sender] menu in
+            guard let self else { return }
+            self.statusMenuPending = false
+            guard let sender, self.statusItem?.button === sender else { return }
+            sender.highlight(true)
+            defer { sender.highlight(false) }
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY - 2), in: sender)
+        }
     }
-    private func makeMenu() -> NSMenu {
+    private func prepareMenu(completion: @escaping (NSMenu) -> Void) {
+        model.clock.menuReading { [weak self] timer in
+            guard let self else { completion(NSMenu()); return }
+            completion(self.makeMenu(clockTimer: timer))
+        }
+    }
+    private func makeMenu(clockTimer: ClockReading?) -> NSMenu {
         let menu = NSMenu()
         menu.addItem(withTitle: "Dynamite settings", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Check for updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
@@ -142,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Pause island", action: #selector(togglePause), keyEquivalent: "").target = self
         menu.addItem(.separator())
-        if let timer = model.clock.reading {
+        if let timer = clockTimer {
             menu.addItem(withTitle: timer.paused ? "Resume Clock timer" : "Pause Clock timer", action: #selector(toggleClockTimer), keyEquivalent: "").target = self
             menu.addItem(withTitle: "Cancel Clock timer", action: #selector(cancelClockTimer), keyEquivalent: "").target = self
             menu.addItem(.separator())
@@ -211,8 +228,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    @objc private func toggleClockTimer() { model.clock.togglePause() }
-    @objc private func cancelClockTimer() { model.clock.cancel() }
+    @objc private func toggleClockTimer() { model.clock.togglePauseFromMenu() }
+    @objc private func cancelClockTimer() { model.clock.cancelFromMenu() }
     @objc private func checkForUpdates() { model.updater.checkForUpdates() }
     @objc private func preview() { model.preview(.volume) }
     @objc private func togglePause() { model.settings.preferences.paused.toggle() }
