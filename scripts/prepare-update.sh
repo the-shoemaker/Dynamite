@@ -2,12 +2,12 @@
 # Works with any app using MacAppUpdates/Sparkle. Creates local artifacts only.
 set -euo pipefail
 allow_unnotarized=false
-if [[ "${1:-}" == --unnotarized-beta ]]; then
+if [[ "${1:-}" == --unnotarized || "${1:-}" == --unnotarized-beta ]]; then
     allow_unnotarized=true
     shift
 fi
 if (( $# != 3 )); then
-    print -u2 'Usage: prepare-update.sh [--unnotarized-beta] /path/App.app /path/release-directory https://host/downloads/'
+    print -u2 'Usage: prepare-update.sh [--unnotarized] /path/App.app /path/release-directory https://host/downloads/'
     exit 2
 fi
 release_app="${1:A}"
@@ -17,9 +17,9 @@ repo_dir="${0:A:h:h}"
 [[ -d "$release_app/Contents" ]] || { print -u2 'App bundle not found'; exit 2; }
 [[ "$download_prefix" == https://* ]] || { print -u2 'Use an HTTPS download prefix'; exit 2; }
 /usr/bin/codesign --verify --deep --strict "$release_app"
-# Stable distribution requires Gatekeeper acceptance. Betas must opt in explicitly.
+# Unnotarized distribution must be an explicit maintainer choice.
 if $allow_unnotarized; then
-    print -u2 'Unnotarized beta: recipients may need the app-specific Open Anyway exception.'
+    print -u2 'Unnotarized release: recipients may need the app-specific Open Anyway exception.'
 else
     /usr/sbin/spctl --assess --type execute "$release_app"
 fi

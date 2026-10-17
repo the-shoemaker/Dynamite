@@ -25,6 +25,7 @@ final class NativeActivityNotifications: ObservableObject {
     private var clockExpectation = ClockAlertExpectation()
     private var generation = UUID()
     private var actions: [String: (AXUIElement, String)] = [:]
+    private var selectedClockBanner: CFHashCode?
     private var receipts = Set<String>()
     private var receiptGeneration = UUID()
     private var receiptsUntil: TimeInterval = 0
@@ -130,7 +131,7 @@ final class NativeActivityNotifications: ObservableObject {
         clockExpectation = ClockAlertExpectation()
         restoreParked()
         if let observer { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes) }
-        observer = nil; app = nil; actions.removeAll()
+        observer = nil; app = nil; actions.removeAll(); selectedClockBanner = nil
     }
     func stop() {
         menuFeatures.removeAll()
@@ -216,11 +217,17 @@ final class NativeActivityNotifications: ObservableObject {
         var nextActions: [Action] = []
         var nextTargets: [String: (AXUIElement, String)] = [:]
         var matchedClock = false
+        var nextClockBanner: CFHashCode?
         var originalClockDuration: Int?
         var hiddenClock = false
         var airDropResult: String?
         var eligibleParkedNodes = Set<CFHashCode>()
-        for (banner, window) in found where !exhausted {
+        // Keep the current card stable across scans. Additional finished timers
+        // remain native rather than merging unrelated Stop/Repeat controls.
+        let ordered = found.sorted {
+            CFHash($0.0) == selectedClockBanner && CFHash($1.0) != selectedClockBanner
+        }
+        for (banner, window) in ordered where !exhausted {
             let attributed: NSAttributedString? = attribute(banner, "AXAttributedDescription")
             let text = attributed?.string ?? (attribute(banner, kAXDescriptionAttribute) as String? ?? "")
             let source = text.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
@@ -230,6 +237,7 @@ final class NativeActivityNotifications: ObservableObject {
             let details = inspectAirDrop ? bannerLabels(in: banner) : []
             let isAirDrop = source == "airdrop" || details.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "airdrop" }
             if enabled.contains(.clockTimer), source == "clock" {
+                guard !matchedClock else { continue }
                 // Source and host isolation are already verified. Hide before
                 // traversing controls, which can take several accessibility IPCs.
                 // Failed/incomplete control discovery is restored below, so a
@@ -239,6 +247,7 @@ final class NativeActivityNotifications: ObservableObject {
                 let permitted = controls.filter { ["Stop", "Repeat"].contains($0.0) }
                 guard permitted.count == 2, Set(permitted.map { $0.0 }) == Set(["Stop", "Repeat"]) else { continue }
                 matchedClock = true
+                nextClockBanner = CFHash(banner)
                 originalClockDuration = text.components(separatedBy: ",").compactMap { ClockReading.durationLabel($0) }.first
                 for (title, element, action) in permitted {
                     let id = "\(CFHash(banner))-\(title)"
@@ -261,6 +270,7 @@ final class NativeActivityNotifications: ObservableObject {
             restoreParked(key)
         }
         if !exhausted {
+            selectedClockBanner = nextClockBanner
             actions = nextTargets
             publish(nextActions, status: matchedClock ? (hiddenClock ? "Clock alert replaced" : "Clock controls ready · native banner remains") : airDropResult ?? "Watching matching native alerts", clockDuration: originalClockDuration)
         }

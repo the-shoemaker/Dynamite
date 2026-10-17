@@ -26,7 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var setupWindow: NSWindow?
     private var preferencesSubscription: AnyCancellable?
-    private var statusMenuPending = false
+    private var statusMenuPending: UUID?
+    private var statusMenuCancellationMonitors: [Any] = []
+    private var statusMenuActivationObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -134,16 +136,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
     @objc private func statusMenuClicked(_ sender: NSStatusBarButton) {
-        guard !statusMenuPending else { return }
-        statusMenuPending = true
+        guard statusMenuPending == nil else { return }
+        let token = UUID()
+        statusMenuPending = token
+        let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
+        if let monitor = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self] _ in self?.cancelPendingStatusMenu() }) {
+            statusMenuCancellationMonitors.append(monitor)
+        }
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] event in
+            self?.cancelPendingStatusMenu()
+            return event
+        }) { statusMenuCancellationMonitors.append(monitor) }
+        statusMenuActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+            self?.cancelPendingStatusMenu()
+        }
         prepareMenu { [weak self, weak sender] menu in
-            guard let self else { return }
-            self.statusMenuPending = false
+            guard let self, self.statusMenuPending == token else { return }
+            self.cancelPendingStatusMenu()
             guard let sender, self.statusItem?.button === sender else { return }
             sender.highlight(true)
             defer { sender.highlight(false) }
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY - 2), in: sender)
         }
+    }
+    private func cancelPendingStatusMenu() {
+        statusMenuPending = nil
+        statusMenuCancellationMonitors.forEach { NSEvent.removeMonitor($0) }
+        statusMenuCancellationMonitors.removeAll()
+        if let observer = statusMenuActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        statusMenuActivationObserver = nil
     }
     private func prepareMenu(completion: @escaping (NSMenu) -> Void) {
         model.clock.menuReading { [weak self] timer in
@@ -160,8 +187,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Pause island", action: #selector(togglePause), keyEquivalent: "").target = self
         menu.addItem(.separator())
         if let timer = clockTimer {
-            menu.addItem(withTitle: timer.paused ? "Resume Clock timer" : "Pause Clock timer", action: #selector(toggleClockTimer), keyEquivalent: "").target = self
-            menu.addItem(withTitle: "Cancel Clock timer", action: #selector(cancelClockTimer), keyEquivalent: "").target = self
+            let toggle = menu.addItem(withTitle: timer.paused ? "Resume Clock timer" : "Pause Clock timer", action: #selector(toggleClockTimer(_:)), keyEquivalent: "")
+            toggle.target = self
+            toggle.representedObject = timer
+            let cancel = menu.addItem(withTitle: "Cancel Clock timer", action: #selector(cancelClockTimer(_:)), keyEquivalent: "")
+            cancel.target = self
+            cancel.representedObject = timer
             menu.addItem(.separator())
         }
         menu.addItem(withTitle: "Quit Dynamite", action: #selector(quit), keyEquivalent: "q").target = self
@@ -228,8 +259,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    @objc private func toggleClockTimer() { model.clock.togglePauseFromMenu() }
-    @objc private func cancelClockTimer() { model.clock.cancelFromMenu() }
+    @objc private func toggleClockTimer(_ sender: NSMenuItem) {
+        guard let expected = sender.representedObject as? ClockReading else { return }
+        model.clock.togglePauseFromMenu(expected)
+    }
+    @objc private func cancelClockTimer(_ sender: NSMenuItem) {
+        guard let expected = sender.representedObject as? ClockReading else { return }
+        model.clock.cancelFromMenu(expected)
+    }
     @objc private func checkForUpdates() { model.updater.checkForUpdates() }
     @objc private func preview() { model.preview(.volume) }
     @objc private func togglePause() { model.settings.preferences.paused.toggle() }
@@ -239,6 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     func applicationWillTerminate(_ notification: Notification) {
+        cancelPendingStatusMenu()
         notchMenu.stop()
         // Read-only render/verification modes must not flush an old preference
         // snapshot over settings edited in a concurrently running app.

@@ -26,6 +26,8 @@ final class ClockMonitor: ObservableObject {
     private var pollDeadline: Date?
     private var observedWindows: [AXUIElement] = []
     private var generation = UUID()
+    private var controlGeneration = UUID()
+    private let backgroundControlOpener: (() -> Void)?
     private var originalDurations: [String: Int] = [:]
     private var workspaceObservers: [NSObjectProtocol] = []
     private var readPending = false
@@ -41,7 +43,10 @@ final class ClockMonitor: ObservableObject {
     private var cachedStart: AXUIElement?
     private var clockForeground = false
 
-    init(timerStoreURL: URL? = nil) { self.timerStoreURL = timerStoreURL }
+    init(timerStoreURL: URL? = nil, backgroundControlOpener: (() -> Void)? = nil) {
+        self.timerStoreURL = timerStoreURL
+        self.backgroundControlOpener = backgroundControlOpener
+    }
 
     /// A mirrored countdown alone cannot supply menu actions. Inspect the open
     /// window once on demand, keeping Accessibility work off the main thread.
@@ -80,6 +85,7 @@ final class ClockMonitor: ObservableObject {
         queue.async { [weak self] in
             guard let self else { return }
             self.running = false
+            self.controlGeneration = UUID()
             self.store.stop()
             self.disconnect()
             self.publish(nil, status: "Off")
@@ -234,7 +240,8 @@ final class ClockMonitor: ObservableObject {
         }
     }
     private func openControlsInBackground() {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [backgroundControlOpener] in
+            if let backgroundControlOpener { backgroundControlOpener(); return }
             guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.clock") else { return }
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = false
@@ -245,12 +252,16 @@ final class ClockMonitor: ObservableObject {
         perform(cancel: false)
     }
     func cancel() { perform(cancel: true) }
-    func togglePauseFromMenu() { performFromMenu(cancel: false) }
-    func cancelFromMenu() { performFromMenu(cancel: true) }
-    private func performFromMenu(cancel: Bool) {
+    func togglePauseFromMenu(_ expected: ClockReading) { performFromMenu(cancel: false, expected: expected) }
+    func cancelFromMenu(_ expected: ClockReading) { performFromMenu(cancel: true, expected: expected) }
+    static func acceptsMenuAction(_ expected: ClockReading, current: ClockReading, cancel: Bool) -> Bool {
+        expected.identifier == current.identifier && (cancel || expected.paused == current.paused)
+    }
+    private func performFromMenu(cancel: Bool, expected: ClockReading) {
         queue.async { [weak self] in
             guard let self, self.running, let pid = self.processID,
-                  let current = self.controllableTimer(pid, identifier: self.last?.identifier) else { return }
+                  let current = self.controllableTimer(pid, identifier: expected.identifier),
+                  Self.acceptsMenuAction(expected, current: current.reading, cancel: cancel) else { return }
             AXUIElementPerformAction(cancel ? current.cancel : current.pause, kAXPressAction as CFString)
             self.requestRead(refreshPreferences: true)
         }
@@ -269,30 +280,34 @@ final class ClockMonitor: ObservableObject {
     private func perform(cancel: Bool) {
         queue.async { [weak self] in
             guard let self, self.running, let last = self.last else { return }
-            self.perform(cancel: cancel, identifier: last.identifier, attempt: 0)
+            self.controlGeneration = UUID()
+            self.perform(cancel: cancel, identifier: last.identifier, attempt: 0, token: self.controlGeneration)
         }
     }
-    private func perform(cancel: Bool, identifier: String, attempt: Int) {
-        guard running, let pid = processID, last?.identifier == identifier else { return }
+    private func perform(cancel: Bool, identifier: String, attempt: Int, token: UUID) {
+        guard running, controlGeneration == token, last?.identifier == identifier else { return }
         // Clock replaces its SwiftUI controls after start/repeat and selection.
         // Resolve a fresh button for this exact timer before every action.
         cachedNodes = nil
-        let current = sample(pid)
-        if current.reading?.identifier == identifier,
-           let button = cancel ? current.cancel : current.pause {
-            AXUIElementPerformAction(button, kAXPressAction as CFString)
-            requestRead(refreshPreferences: true)
-            return
+        if let pid = processID {
+            let current = sample(pid)
+            if current.reading?.identifier == identifier,
+               let button = cancel ? current.cancel : current.pause {
+                AXUIElementPerformAction(button, kAXPressAction as CFString)
+                requestRead(refreshPreferences: true)
+                return
+            }
         }
         guard attempt < 4 else { return }
         if attempt == 0 {
             // Recreate Clock's controls without switching the user's active app.
             openControlsInBackground()
         }
-        let token = generation
+        // Connecting a newly launched Clock changes the observation generation.
+        // Keep this bounded user action alive across that connection, but cancel
+        // it on stop, a newer action, or a different mirrored timer.
         queue.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            guard let self, self.generation == token else { return }
-            self.perform(cancel: cancel, identifier: identifier, attempt: attempt + 1)
+            self?.perform(cancel: cancel, identifier: identifier, attempt: attempt + 1, token: token)
         }
     }
     private func refreshWindowObservations() {

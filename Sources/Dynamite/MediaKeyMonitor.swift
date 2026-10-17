@@ -22,6 +22,7 @@ final class MediaKeyMonitor: ObservableObject {
     }
     private var deferred: [Int: DeferredPress] = [:]
     private static let replayTag: Int64 = 0x44594E4F4D495445
+    private var replayEvent: (CGEvent) -> Void = MediaKeyMonitor.replay
 
     func configure(volume: Bool, brightness: Bool) {
         lock.lock()
@@ -102,7 +103,7 @@ final class MediaKeyMonitor: ObservableObject {
             self.lock.lock()
             let valid = token == self.generation
             self.lock.unlock()
-            guard valid else { Self.replay(original); return }
+            guard valid else { self.replayEvent(original); return }
             guard let handle = self.handle else { self.finish(token, original, success: false); return }
             handle(press.key, fine) { [weak self] success in self?.finish(token, original, success: success) }
         }
@@ -119,14 +120,14 @@ final class MediaKeyMonitor: ObservableObject {
             }
         }
         lock.unlock()
-        if !success { Self.replay(event) }
+        if !success { replayEvent(event) }
         if let next {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.lock.lock()
                 let valid = token == self.generation
                 self.lock.unlock()
-                guard valid else { return }
+                guard valid else { self.replayEvent(next.event); return }
                 guard let handle = self.handle else { self.finish(token, next.event, success: false); return }
                 handle(next.press.key, next.fine) { [weak self] success in self?.finish(token, next.event, success: success) }
             }
@@ -145,6 +146,7 @@ final class MediaKeyMonitor: ObservableObject {
         lock.lock()
         generation += 1
         pending = 0
+        let abandoned = deferred.keys.sorted().compactMap { deferred[$0]?.event }
         deferred.removeAll()
         consumed.removeAll()
         let loop = runLoop
@@ -155,10 +157,18 @@ final class MediaKeyMonitor: ObservableObject {
         tap = nil
         eventThread = nil
         active = false
+        // These key-down events were consumed by the tap but never reached the
+        // hardware worker. Return each surviving coalesced press to macOS.
+        abandoned.forEach(replayEvent)
     }
     /// Exercise the real admission callback without posting any events to macOS.
     func verifyResponsiveness(completion: @escaping () -> Void) {
         guard MediaKeyEventDecoder.validate() else { print("FAIL: unsupported media-event fields"); exit(1) }
+        var replayed = 0
+        replayEvent = { event in
+            precondition(event.getIntegerValueField(.eventSourceUserData) != Self.replayTag)
+            replayed += 1
+        }
         var completions: [(Bool) -> Void] = []
         handle = { _, _, done in completions.append(done) }
         let sample = NSEvent.otherEvent(with: .systemDefined, location: .zero, modifierFlags: [],
@@ -183,9 +193,22 @@ final class MediaKeyMonitor: ObservableObject {
                       unrelatedPassed == 1000, releaseDecoded?.isDown == false else {
                     print("FAIL: input regression"); exit(1)
                 }
-                completions.forEach { $0(true) }
                 self.stop()
-                completion()
+                guard replayed == 1 else { print("FAIL: deferred press lost on stop"); exit(1) }
+                completions.removeAll()
+                for _ in 0..<3 { _ = self.receive(MediaKeyEventDecoder.eventType, sample) }
+                DispatchQueue.main.async {
+                    guard completions.count == 2, self.deferred.count == 1 else {
+                        print("FAIL: deferred handoff setup"); exit(1)
+                    }
+                    completions[0](true)
+                    self.stop()
+                    DispatchQueue.main.async {
+                        guard replayed == 2 else { print("FAIL: selected deferred press lost on stop"); exit(1) }
+                        self.replayEvent = Self.replay
+                        completion()
+                    }
+                }
             }
         }
     }

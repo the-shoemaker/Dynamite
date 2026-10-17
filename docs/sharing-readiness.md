@@ -1,6 +1,6 @@
 # Sharing readiness
 
-Audited September 21, 2026. This is an early public beta. A fresh second-Mac installation has not yet been verified.
+Updated for 1.0 on October 17, 2026. The maintainer chose to retain local signing for the first stable release. The maintainer reports that another person installed the app successfully. That Mac's OS/model and full permission/update workflow were not recorded.
 
 ## What to send
 
@@ -8,7 +8,7 @@ Send the actual `build/Dynamite.app` bundle in a ZIP, not a launcher symlink, ex
 
 The present executable is **arm64 (Apple Silicon)**. It is not an Intel build. The package deployment minimum is macOS 14; only the development Mac running macOS 27 has been exercised. A deployment target is not proof of integration compatibility.
 
-The existing signature is local development signing, not Developer ID, with no notarization ticket and no hardened-runtime release validation. Another Mac will not inherit local certificate trust or privacy grants. Gatekeeper can block a downloaded copy. Do not distribute the local signing keychain, password, certificate private key, or instructions to disable Gatekeeper. For normal public distribution, use Developer ID Application signing, hardened runtime, notarization, and stapling, then test the downloaded artifact on a separate Mac/account with Gatekeeper enabled. The beta uses an explicit unnotarized packaging mode and a separate Ed25519-signed Sparkle update feed. See the release instructions and README for the app-specific Open Anyway route.
+The existing signature is local development signing, not Developer ID, with no notarization ticket and no hardened-runtime release validation. Another Mac will not inherit local certificate trust or privacy grants. Gatekeeper can block a downloaded copy. Do not distribute the local signing keychain, password, certificate private key, or instructions to disable Gatekeeper. For normal public distribution, use Developer ID Application signing, hardened runtime, notarization, and stapling, then test the downloaded artifact on a separate Mac/account with Gatekeeper enabled. The release uses an explicit unnotarized packaging mode and a separate Ed25519-signed Sparkle update feed. See the release instructions and README for the app-specific Open Anyway route.
 
 Apple references: [Developer ID](https://developer.apple.com/developer-id/), [distribution signing](https://developer.apple.com/documentation/xcode/creating-distribution-signed-code-for-the-mac/), [packaging and separate-Mac testing](https://developer.apple.com/documentation/xcode/packaging-mac-software-for-distribution).
 

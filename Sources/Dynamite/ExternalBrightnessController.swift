@@ -29,6 +29,10 @@ final class ExternalBrightnessController {
     func invalidate() { services.removeAll(); maxima.removeAll(); preferenceIDs.removeAll(); lastValues.removeAll(); scales.removeAll(); lastHardware.removeAll(); lastDiscovery = -.infinity }
     func read(_ id: UInt32) -> Float? {
         guard CGDisplayIsBuiltin(id) == 0, let service = service(for: id), let readI2C else { return nil }
+        // A new adjustment must reassert its first hardware value. MonitorControl
+        // or the monitor's buttons may have changed it since our previous write,
+        // even while the short baseline cache is valid. Ramp steps still dedupe.
+        lastHardware.removeValue(forKey: id)
         if let value = lastValues[id], ProcessInfo.processInfo.systemUptime - value.1 < 2 { return value.0 }
         if let value = monitorControlBaseline(id) { return value }
         if let profile = preferenceIDs[id], CFPreferencesCopyAppValue(("value16" + profile) as CFString, domain) != nil {

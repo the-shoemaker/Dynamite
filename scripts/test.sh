@@ -28,6 +28,8 @@ python3 scripts/test-update-config.py
 ./scripts/verify-microphone-lifecycle.sh
 
 ./scripts/verify-output-lifecycle.sh
+./scripts/verify-media-key-lifecycle.sh
+./scripts/verify-external-brightness.sh
 
 ./scripts/verify-diagnostic.sh
 ./scripts/verify-internet-lifecycle.sh

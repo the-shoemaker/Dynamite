@@ -275,7 +275,7 @@ struct SettingsView: View {
                 Toggle("Keep settings on top", isOn: $settings.preferences.keepSettingsOnTop)
             }
             Section("Display") {
-                Picker("Show activities on", selection: $settings.preferences.placement) {
+                Picker("Show brief alerts on", selection: $settings.preferences.placement) {
                     ForEach(DisplayPlacement.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
             }

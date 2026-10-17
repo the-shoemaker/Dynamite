@@ -291,7 +291,7 @@ final class AppModel: ObservableObject {
     }
     func show(_ activity: Activity) {
         let preferences = settings.preferences
-        guard !preferences.paused, preferences.preference(for: activity.feature).enabled else { return }
+        guard !sleeping, !preferences.paused, preferences.preference(for: activity.feature).enabled else { return }
         guard !finishHandoff.isImminent(at: ProcessInfo.processInfo.systemUptime) else { return }
         let duration = preferences.preference(for: activity.feature).duration
         schedule.present(activity, duration: duration, now: ProcessInfo.processInfo.systemUptime)
@@ -308,7 +308,7 @@ final class AppModel: ObservableObject {
     }
     private func updateCapsLock() {
         let preferences = settings.preferences
-        let active = capsLockActive && !preferences.paused && preferences.preference(for: .capsLock).enabled
+        let active = !sleeping && capsLockActive && !preferences.paused && preferences.preference(for: .capsLock).enabled
         let now = ProcessInfo.processInfo.systemUptime
         let clockEnabled = !sleeping && !preferences.paused && preferences.preference(for: .clockTimer).enabled
         timerVisibility.update(identifier: clockEnabled ? clock.reading?.identifier : nil,

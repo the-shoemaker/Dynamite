@@ -6,9 +6,9 @@ Dynamite turns volume, brightness, Focus changes and other everyday status updat
 
 Built with SwiftUI and AppKit, with a floating pill for displays without a notch.
 
-**Public beta · Apple Silicon · Locally signed, not notarized**
+**1.0 · Apple Silicon · Locally signed, not notarized**
 
-[Download the beta](https://github.com/the-shoemaker/Dynamite/releases) · [Report a problem](https://github.com/the-shoemaker/Dynamite/issues)
+[Download Dynamite](https://github.com/the-shoemaker/Dynamite/releases/latest) · [Report a problem](https://github.com/the-shoemaker/Dynamite/issues)
 
 ## What it does
 
@@ -31,13 +31,13 @@ Dynamite hides recognized native popups when its replacement is available. Some 
 
 1. Download the ZIP from [Releases](https://github.com/the-shoemaker/Dynamite/releases) and unzip it.
 2. Move **Dynamite.app** to **Applications** before launching or granting permissions.
-3. Open it. This beta is not signed with an Apple Developer ID or notarized, so macOS may block the first launch.
+3. Open it. Dynamite is locally signed, without Apple Developer ID signing or notarization, so macOS may block the first launch.
 4. If you trust this download, open **System Settings → Privacy & Security**, find the blocked-app message and choose **Open Anyway**, then confirm. See [Apple's instructions](https://support.apple.com/102445). A managed Mac may not allow this exception.
 5. Follow Permission setup. Optional integrations can be enabled later from Settings → Integrations.
 
 You do not need a paid developer account to use the app or grant its permissions. Do not disable Gatekeeper or SIP. If macOS reports malware or a damaged download rather than an unidentified developer, stop and report the exact message.
 
-This archive contains an **Apple Silicon executable**. Intel Macs are not supported by this beta. The deployment minimum is macOS 14, but testing has been on macOS 27 beta; older macOS versions and a fresh second Mac still need verification.
+This archive contains an **Apple Silicon executable**. Intel Macs are not supported. The deployment minimum is macOS 14, but testing has been on macOS 27; a recipient has confirmed installation on another Mac, while older macOS versions and the full permission/update flow still need verification. Private integrations are not guaranteed across all macOS versions.
 
 ## Permissions
 
@@ -54,7 +54,7 @@ Permissions belong to each Mac and user. They do not travel with the download. S
 
 - The Settings toolbar can briefly show an overflow button when expanding the sidebar. This visual issue is still being worked on.
 - A native popup may flash before Dynamite hides it, particularly the first AirPods volume swipe. macOS updates can change popup ownership and behavior.
-- Clock and Focus use undocumented state formats. Some Clock controls currently depend on English labels. Other languages need testing.
+- Clock and Focus use undocumented state formats. Some Clock controls currently depend on English labels. Other languages need testing. One finished Clock timer uses Dynamite's action card; additional simultaneous alerts keep their native controls.
 - AirDrop supports **completed files received in Downloads**, not incoming acceptance, live progress, outgoing transfers or items opened directly in another app.
 - AirPods battery availability varies by model and firmware. Missing readings are omitted rather than guessed.
 - External brightness depends on supported hardware and compatible MonitorControl profiles. Unsupported controls fall back to their existing handling.
@@ -81,7 +81,7 @@ About includes an optional [12-hour performance diagnostic](docs/performance-dia
 
 Release builds use Sparkle with an HTTPS feed and Ed25519-signed update archives. Check for Updates is in About; automatic checks are optional. The public verification key is included in the app, while the signing key stays in the maintainer's Keychain. Apple code signing and Sparkle update signing are separate.
 
-The 0.1.0 → 0.1.1 download, verification, installation and relaunch were tested through Check for Updates on the development Mac using a copy of the published beta. A complete upgrade on a second Mac still needs testing. Manual downloads remain available in Releases.
+Download, verification, installation, cancellation and relaunch have been tested on the development Mac with an earlier development copy upgrading to the published 0.1.4 build. A complete upgrade on a second Mac still needs testing. Manual downloads remain available in Releases.
 
 ## Build and test
 
@@ -99,6 +99,8 @@ Builds and tests share one SDK module cache and skip source indexing. The packag
 The showcase images use the actual SwiftUI views with inert sample providers. Regenerate them with `./scripts/render-showcase.sh`; this does not start integrations or change the installed app.
 
 See [release instructions](docs/releases.md), [architecture](docs/architecture.md) and [platform support](docs/platform-support.md) for details.
+
+The [1.0 release audit](docs/1.0-release-audit-2026-10-17.md) records the fixes, verification, and remaining hardware and compatibility checks.
 
 ## License
 
